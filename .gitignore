@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Warehouse. Local only, tens of GB, never committed.
+warehouse/
+*.duckdb
+*.duckdb.wal
+raw/
+
+# dbt
+transform/target/
+transform/dbt_packages/
+transform/logs/
+logs/
+
+# Node
+node_modules/
+web/.next/
+web/out/
+web/.turbo/
+
+# Shipped artifacts are built, not committed, except the demo bundle
+web/public/data/*.parquet
+!web/public/data/.gitkeep
+
+# OS
+.DS_Store

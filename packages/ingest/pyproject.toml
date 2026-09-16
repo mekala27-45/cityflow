@@ -1,0 +1,17 @@
+[project]
+name = "cityflow-ingest"
+version = "0.1.0"
+description = "Source registry, per-vintage schema mapping, quarantine rules and the seeded generator."
+requires-python = ">=3.12"
+dependencies = [
+    "cityflow-core",
+    "duckdb>=1.1",
+    "pyarrow>=18.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cityflow_ingest"]

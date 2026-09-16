@@ -1,0 +1,133 @@
+[project]
+name = "cityflow"
+version = "0.1.0"
+description = "An analytics warehouse and browser-side dashboard over NYC taxi and for-hire vehicle trip records."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Ajay Mekala", email = "mekalaajayk@gmail.com" }]
+
+dependencies = [
+    "cityflow-core",
+    "cityflow-ingest",
+    "cityflow-stats",
+    "cityflow-publish",
+    "typer>=0.15",
+    "rich>=13.9",
+]
+
+[project.scripts]
+cityflow = "cityflow.cli:app"
+
+[project.optional-dependencies]
+transform = ["dbt-core>=1.9", "dbt-duckdb>=1.9"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "sqlfluff>=3.3",
+    "types-PyYAML>=6.0",
+    "pandas-stubs>=2.2",
+]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+cityflow-core = { workspace = true }
+cityflow-ingest = { workspace = true }
+cityflow-stats = { workspace = true }
+cityflow-publish = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cityflow"]
+
+# ----------------------------------------------------------------------------
+# Lint and type checking. Strict by default, exceptions listed with a reason.
+# ----------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["transform/target", "web"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",      # pycodestyle, pyflakes
+    "I",                # isort
+    "UP",               # pyupgrade
+    "B",                # bugbear
+    "SIM",              # simplify
+    "C4",               # comprehensions
+    "PTH",              # use pathlib
+    "RUF",              # ruff specific
+    "N",                # pep8 naming
+    "ARG",              # unused arguments
+    "TID",              # tidy imports
+]
+ignore = [
+    "E501",    # line length is enforced by the formatter, not the linter
+    "RUF001",  # ambiguous unicode: the palette docs contain box drawing characters
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ARG"]          # pytest fixtures are arguments that look unused
+"packages/*/tests/**" = ["ARG"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_any_generics = true
+exclude = ["transform/target", "web", "build"]
+plugins = []
+
+[[tool.mypy.overrides]]
+# These ship no type information. The wrappers around them in cityflow_stats
+# are annotated, so the strictness is preserved at our own boundary.
+module = ["statsmodels.*", "duckdb.*", "scipy.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "packages"]
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "slow: takes more than a few seconds, skipped by the fast suite",
+    "needs_dbt: requires the dbt executable on PATH, probed before use",
+    "needs_node: requires node on PATH, probed before use",
+]
+filterwarnings = ["error", "ignore::DeprecationWarning:statsmodels.*"]
+
+[tool.coverage.run]
+source = ["packages", "src", "metrics", "scripts"]
+omit = ["*/tests/*", "*/__main__.py"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
+
+[tool.sqlfluff.core]
+dialect = "duckdb"
+templater = "jinja"
+max_line_length = 100
+exclude_rules = ["RF01", "ST06", "AM05", "ST05", "RF02", "RF03", "RF04", "CV10", "LT09"]
+
+[tool.sqlfluff.indentation]
+tab_space_size = 4
+indented_joins = false
+
+[tool.sqlfluff.rules.capitalisation.keywords]
+capitalisation_policy = "lower"
+
+[tool.sqlfluff.rules.capitalisation.functions]
+extended_capitalisation_policy = "lower"
