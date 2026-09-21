@@ -419,6 +419,50 @@ build serves exactly the data a reader of the repository sees, on a runner that
 could not hold the warehouse anyway. That is also why the size budget is a gate
 rather than a guideline.
 
+### The host does not always serve the bytes it says it is serving
+
+GitHub Pages gzip compresses parquet responses, and for some objects its edge
+answers a byte range out of the compressed representation while labelling the
+response with the uncompressed length. The first few kilobytes arrive as
+zeroes, the tail arrives correct, and the reported total size is right, so
+nothing upstream notices.
+
+Measured on the deployed site, on two of the 23 shipped
+files at once: a whole file `GET` returned the correct bytes and the correct
+SHA-256 while a `bytes=0-3` `GET` against the same URL in the same second
+returned four zero bytes. A redeploy did not clear it. The copies in the
+repository were intact throughout, and `make size` and `make claims` both
+passed, because neither of them reads the deployed site.
+
+What a reader saw was three tiles reading `no data`, two charts showing
+`Invalid Error: TProtocolException: Invalid data`, and no indication of which
+file or why. DuckDB reads the footer at the end of the file, which was correct,
+then seeks to a column chunk near the start, which was zeroes, and fails inside
+the Thrift parser that is trying to parse a page header out of them.
+
+`src/lib/duckdb-client.ts` now asks each file for its first four bytes before
+registering it and checks them against the parquet magic. A file that answers
+correctly is registered as a URL and read by range, which is the whole point of
+the architecture and what the 67.4 MB layer is designed around. A
+file that does not is fetched whole, which this host does serve correctly, and
+the fallback is reported on the data health panel rather than hidden, because
+every other panel on that page tells the reader it reads by range and on a
+broken host that would be false.
+
+The cost of the check is four bytes per file, in parallel, at boot.
+
+`web/tests/delivery.spec.ts` reproduces the fault rather than describing it: it
+intercepts ranged reads of one file and returns zeroes of the right length with
+the right headers, exactly as the host did, then asserts that the page falls
+back for that file and only that file, that every tile still renders a number,
+that no query fails, and that the page says so. Disabling the check makes it
+fail, which was verified before it was committed.
+
+If this starts happening to a file large enough that fetching it whole is not
+acceptable, the answer is to move the shipped layer to a host that serves
+ranges correctly, and to say on the README that the demo is no longer served
+from the repository alone.
+
 Two properties of the export are enforced in CI rather than assumed. The `web`
 job greps the built output for any third party origin and fails if one appears:
 the page must be self contained, both because this network cannot reach a CDN

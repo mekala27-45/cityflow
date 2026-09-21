@@ -3,6 +3,7 @@
 import { Panel } from '@/components/panel';
 import { ProvenanceBanner } from '@/components/provenance';
 import { BenchTable } from '@/charts/bench-table';
+import { DeliveryNotice } from '@/charts/delivery-notice';
 import { NullRates } from '@/charts/null-rates';
 import { QuarantineLog } from '@/charts/quarantine-log';
 import { SourceFreshness } from '@/charts/source-freshness';
@@ -22,6 +23,7 @@ export function PanelTrust() {
       }
     >
       <ProvenanceBanner testId="provenance-banner-panel" />
+      <DeliveryNotice />
       <QuarantineLog />
       <SourceFreshness />
       <NullRates />

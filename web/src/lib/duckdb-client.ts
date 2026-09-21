@@ -61,6 +61,105 @@ export const PARQUET_FILES = [
   'mart_null_rates.parquet',
 ] as const;
 
+// The first four bytes of every parquet file, and of the last four. A reader
+// that does not find them is not reading a parquet file.
+const PARQUET_MAGIC = [0x50, 0x41, 0x52, 0x31]; // "PAR1"
+
+export type DeliveryMode = 'range' | 'buffer';
+
+export interface DeliveryRecord {
+  file: string;
+  mode: DeliveryMode;
+  /** Set only when the file had to be fetched whole. */
+  bytes?: number;
+  /** Why the range path was rejected, for the data health panel. */
+  reason?: string;
+}
+
+let delivery: DeliveryRecord[] = [];
+
+/** What each parquet file ended up being read through, and why. */
+export function deliveryReport(): DeliveryRecord[] {
+  return delivery.slice();
+}
+
+/**
+ * Decide how to read one file, by asking for its first four bytes.
+ *
+ * Registering a URL is the point of this architecture: DuckDB then reads
+ * footers and the column chunks a query needs, rather than the whole file. That
+ * only works if the host serves byte ranges of the bytes it claims to be
+ * serving, and GitHub Pages, on which this is deployed, does not always do so.
+ *
+ * It gzip compresses parquet responses, and for some objects its edge answers a
+ * range request out of the compressed representation while labelling the
+ * response with the identity length. The first few kilobytes come back as
+ * zeroes, the tail comes back correct, and the total size is right, so nothing
+ * upstream notices. DuckDB reads the footer successfully, seeks to a column
+ * chunk near the start of the file, gets zeroes, and fails inside the Thrift
+ * parser with "Invalid data", which names neither the file nor the cause.
+ *
+ * Measured on the deployed site: a whole file GET returned the correct bytes
+ * and the correct SHA-256 while a 'bytes=0-3' GET against the same URL in the
+ * same second returned four zero bytes. Two of eighteen files were affected,
+ * and a redeploy did not clear it.
+ *
+ * So the range path is used where it works and verified before it is trusted.
+ * Four bytes per file, in parallel, is a cheap price for the difference between
+ * a working page and an error nobody can act on. A file that fails the check is
+ * fetched whole, which is correct on this host, and the fallback is reported
+ * rather than hidden: a reader is entitled to know the page went around a
+ * delivery fault instead of quietly downloading more than it said it would.
+ */
+async function register(db: duckdb.AsyncDuckDB, file: string): Promise<DeliveryRecord> {
+  const url = absoluteDataUrl(file);
+  let reason: string | undefined;
+
+  try {
+    const probe = await fetch(url, { headers: { Range: 'bytes=0-3' } });
+    if (probe.status !== 206) {
+      reason = `range request answered ${probe.status}, not 206`;
+    } else {
+      const head = new Uint8Array(await probe.arrayBuffer());
+      if (head.length !== PARQUET_MAGIC.length || !PARQUET_MAGIC.every((b, i) => head[i] === b)) {
+        reason = `range request returned ${hex(head)} where the parquet magic 50 41 52 31 should be`;
+      }
+    }
+  } catch (err) {
+    reason = `range request failed: ${String(err)}`;
+  }
+
+  if (!reason) {
+    // false is "do not fetch now". DuckDB opens the file lazily on first
+    // reference and then reads only the ranges a query needs.
+    await db.registerFileURL(file, url, duckdb.DuckDBDataProtocol.HTTP, false);
+    return { file, mode: 'range' };
+  }
+
+  const whole = await fetch(url);
+  const bytes = new Uint8Array(await whole.arrayBuffer());
+  const tail = bytes.subarray(bytes.length - PARQUET_MAGIC.length);
+  if (!PARQUET_MAGIC.every((b, i) => bytes[i] === b) || !PARQUET_MAGIC.every((b, i) => tail[i] === b)) {
+    // The fallback is for a host that mis-serves ranges. A whole file that is
+    // also not a parquet is a different problem and must not be registered as
+    // though it were one, because the error it produces later names a query
+    // rather than a download.
+    throw new Error(
+      `${file} is not a parquet file as delivered: it starts ${hex(bytes.subarray(0, 4))} ` +
+        `and ends ${hex(tail)}, and both should be 50 41 52 31. The copy in the ` +
+        `repository is intact, so this is a delivery fault rather than a data one.`,
+    );
+  }
+  await db.registerFileBuffer(file, bytes);
+  return { file, mode: 'buffer', bytes: bytes.byteLength, reason };
+}
+
+function hex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join(' ');
+}
+
 export interface QueryResult<Row> {
   rows: Row[];
   durationMs: number;
@@ -112,19 +211,14 @@ async function boot(): Promise<duckdb.AsyncDuckDB> {
     query: { castBigIntToDouble: true, castDecimalToDouble: true },
   });
 
-  // false is "do not fetch now". DuckDB opens the file lazily on first reference
-  // and then reads only the ranges a query needs.
-  await Promise.all(
-    PARQUET_FILES.map((file) =>
-      db.registerFileURL(file, absoluteDataUrl(file), duckdb.DuckDBDataProtocol.HTTP, false),
-    ),
-  );
+  delivery = await Promise.all(PARQUET_FILES.map((file) => register(db, file)));
 
   connection = await db.connect();
 
   // A deliberate escape hatch for the benchmark script and for anyone who wants
   // to check a number on the page against the parquet directly, from a console.
   window.__cityflowQuery = (sql: string) => runQuery(sql, { label: 'console' }).then((r) => r.rows);
+  window.__cityflowDelivery = deliveryReport;
 
   queryLog.setEngineReady(performance.now() - startedAt);
   return db;

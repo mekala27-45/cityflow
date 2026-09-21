@@ -35,6 +35,9 @@ declare global {
     /** Ad hoc SQL against the live engine, for benchmarking and for checking a
      *  number on the page against the parquet without opening the app's code. */
     __cityflowQuery?: (sql: string) => Promise<unknown[]>;
+    /** How each parquet file was read, and why, for the data health panel and
+     *  for the test that breaks a host's range serving on purpose. */
+    __cityflowDelivery?: () => { file: string; mode: 'range' | 'buffer'; bytes?: number; reason?: string }[];
     __cityflowQueryLog?: {
       queries: QueryRecord[];
       network: NetworkRecord[];
