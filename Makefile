@@ -56,7 +56,7 @@ publish:  ## Build the shipped aggregate layer the browser queries
 	$(UV) run cityflow manifest
 
 .PHONY: pipeline
-pipeline: zones ingest transform publish reconcile docs  ## The whole warehouse, end to end
+pipeline: zones ingest transform publish reconcile tableau docs  ## The whole warehouse, end to end
 
 # ----------------------------------------------------------------------------
 # The gates. Every one of these fails the build in CI.
@@ -142,6 +142,10 @@ web-dev:  ## Run the dashboard locally
 .PHONY: web-test
 web-test:  ## Playwright smoke test against the built export
 	cd web && $(NPM) run test:smoke
+
+.PHONY: tableau
+tableau:  ## Rebuild the three CSV extracts the Tableau companion reads
+	$(UV) run python scripts/build_tableau_extracts.py
 
 .PHONY: bench
 bench:  ## Measure every panel query: latency, bytes pulled, row groups skipped
