@@ -12,6 +12,7 @@
     "unit": "trips",
     "format": "{:,.0f}",
     "interval": null,
+    "interval_note": "A count of the rows in the window, not an estimate of anything larger. There is no sampling here to put an interval around.",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -38,6 +39,7 @@
     "unit": "USD",
     "format": "${:,.0f}",
     "interval": null,
+    "interval_note": "A total of amounts actually charged. It is the population, not a sample of it.",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -64,6 +66,7 @@
     "unit": "USD",
     "format": "${:,.0f}",
     "interval": null,
+    "interval_note": "As revenue: a total, not an estimate.",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -90,6 +93,7 @@
     "unit": "USD",
     "format": "${:,.2f}",
     "interval": "student-t",
+    "interval_note": "",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -117,6 +121,7 @@
     "unit": "miles",
     "format": "{:,.2f} mi",
     "interval": "student-t",
+    "interval_note": "",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -144,6 +149,7 @@
     "unit": "minutes",
     "format": "{:,.1f} min",
     "interval": "student-t",
+    "interval_note": "",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -171,6 +177,7 @@
     "unit": "mph",
     "format": "{:,.1f} mph",
     "interval": null,
+    "interval_note": "A ratio of two totals. A delta method interval on it would be dominated by the covariance between distance and time, which the shipped components do not carry, and quoting one without that term would imply a precision this layer cannot support. The tipped_share metric carries the interval that answers a related question properly.",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -198,6 +205,7 @@
     "unit": "USD per mile",
     "format": "${:,.2f}/mi",
     "interval": null,
+    "interval_note": "A ratio of two totals. See mean_speed_mph for why it carries no interval.",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -225,6 +233,7 @@
     "unit": "share of fare",
     "format": "{:.2%}",
     "interval": null,
+    "interval_note": "A ratio of two totals, weighted by fare. The proportion underneath it, tipped_share, is the one that carries a Wilson interval, and the two answer different questions: how much people tip, and how often.",
     "filters": [
       "tip_is_observable"
     ],
@@ -255,6 +264,7 @@
     "unit": "share of trips",
     "format": "{:.1%}",
     "interval": "wilson",
+    "interval_note": "",
     "filters": [
       "tip_is_observable"
     ],
@@ -284,6 +294,7 @@
     "unit": "share of trips",
     "format": "{:.2%}",
     "interval": "wilson",
+    "interval_note": "",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -311,6 +322,7 @@
     "unit": "share of trips",
     "format": "{:.2%}",
     "interval": "wilson",
+    "interval_note": "",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -338,6 +350,7 @@
     "unit": "share of trips",
     "format": "{:.1%}",
     "interval": "wilson",
+    "interval_note": "",
     "filters": [
       "service in ('yellow', 'green')"
     ],
@@ -367,6 +380,7 @@
     "unit": "share of trips",
     "format": "{:.2%}",
     "interval": "wilson",
+    "interval_note": "",
     "filters": [
       "ratecode_id in (2, 3)"
     ],
@@ -396,6 +410,7 @@
     "unit": "USD",
     "format": "${:,.0f}",
     "interval": null,
+    "interval_note": "A total of amounts actually charged.",
     "filters": [],
     "owner": "analytics",
     "models": [
@@ -422,6 +437,7 @@
     "unit": "passengers",
     "format": "{:,.2f}",
     "interval": "student-t",
+    "interval_note": "",
     "filters": [
       "passenger_count is not null"
     ],

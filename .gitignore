@@ -27,9 +27,10 @@ web/.next/
 web/out/
 web/.turbo/
 
-# Shipped artifacts are built, not committed, except the demo bundle
-web/public/data/*.parquet
-!web/public/data/.gitkeep
+# The shipped layer IS committed. GitHub Pages serves from the repository, so
+# the demo works on first click without a build step, and the size budget in
+# config/cityflow.yml is what keeps that honest. The warehouse it was built
+# from is not committed and never will be.
 
 # OS
 .DS_Store

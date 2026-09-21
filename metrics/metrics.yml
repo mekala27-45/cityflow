@@ -33,6 +33,9 @@ metrics:
   - name: trips
     kind: sum
     description: Count of trips that passed every quarantine rule.
+    interval_note: >
+      A count of the rows in the window, not an estimate of anything larger.
+      There is no sampling here to put an interval around.
     grain: [date, hour, zone, service]
     unit: trips
     format: "{:,.0f}"
@@ -47,6 +50,9 @@ metrics:
       and green this is the published total_amount. For hire vehicle files
       publish no total, so it is summed from the components, which is stated
       in docs/data.md and is not the same construction.
+    interval_note: >
+      A total of amounts actually charged. It is the population, not a
+      sample of it.
     grain: [date, hour, zone, service]
     unit: USD
     format: "${:,.0f}"
@@ -57,6 +63,8 @@ metrics:
   - name: fare_revenue
     kind: sum
     description: Base fare only, before tips, tolls and surcharges.
+    interval_note: >
+      As revenue: a total, not an estimate.
     grain: [date, hour, zone, service]
     unit: USD
     format: "${:,.0f}"
@@ -105,6 +113,12 @@ metrics:
       fleet move", because it weights a forty minute crawl more than a two
       minute hop. The mean of ratios answers a different question and is the
       one people compute by accident.
+    interval_note: >
+      A ratio of two totals. A delta method interval on it would be
+      dominated by the covariance between distance and time, which the
+      shipped components do not carry, and quoting one without that term
+      would imply a precision this layer cannot support. The tipped_share
+      metric carries the interval that answers a related question properly.
     grain: [date, hour, zone, service]
     unit: mph
     format: "{:,.1f} mph"
@@ -115,6 +129,9 @@ metrics:
   - name: revenue_per_mile
     kind: ratio
     description: Total revenue over total distance.
+    interval_note: >
+      A ratio of two totals. See mean_speed_mph for why it carries no
+      interval.
     grain: [date, hour, zone, service]
     unit: USD per mile
     format: "${:,.2f}/mi"
@@ -131,6 +148,10 @@ metrics:
       by about a third on yellow and green, which is why most published NYC tip
       rates are wrong. For hire vehicle trips are settled in the app, so their
       zeroes are real zeroes and they are included.
+    interval_note: >
+      A ratio of two totals, weighted by fare. The proportion underneath it,
+      tipped_share, is the one that carries a Wilson interval, and the two
+      answer different questions: how much people tip, and how often.
     grain: [date, hour, zone, service]
     unit: share of fare
     format: "{:.2%}"
@@ -234,6 +255,8 @@ metrics:
       Total congestion surcharge collected. Null before February 2019 rather
       than zero, so a window that spans the introduction shows a gap and not a
       step from nothing.
+    interval_note: >
+      A total of amounts actually charged.
     grain: [date, hour, zone, service]
     unit: USD
     format: "${:,.0f}"

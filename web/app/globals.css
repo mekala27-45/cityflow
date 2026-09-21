@@ -1,0 +1,207 @@
+@import 'tailwindcss';
+
+/* System stacks only. No font is fetched at runtime: the deploy target cannot
+   reach Google Fonts and a blocked stylesheet is a layout shift nobody asked for. */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+:root {
+  color-scheme: dark;
+  --surface: #0b0f14;
+  --panel: #11161d;
+  --panel-raised: #161d26;
+  --border: #1f2933;
+  --grid: #1c242e;
+  --axis: #2a3441;
+
+  --text: #e8eaed;
+  --text-muted: #9aa4af;
+  --text-faint: #6b7683;
+
+  --series-1: #0891b2;
+  --series-2: #d97706;
+  --series-3: #8b5cf6;
+  --series-4: #059669;
+  --series-5: #ef4444;
+  --series-6: #3b82f6;
+  --series-7: #ec4899;
+  --series-8: #65a30d;
+
+  --seq-1: #155e75;
+  --seq-2: #0e7490;
+  --seq-3: #0891b2;
+  --seq-4: #06b6d4;
+  --seq-5: #22d3ee;
+  --seq-6: #67e8f9;
+
+  --div-mid: #383835;
+
+  --status-ok: #10b981;
+  --status-warn: #f59e0b;
+  --status-bad: #f87171;
+
+  --focus: #22d3ee;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+    --surface: #fafafa;
+    --panel: #ffffff;
+    --panel-raised: #f4f4f2;
+    --border: #e2e2de;
+    --grid: #e4e4e1;
+    --axis: #cfcfcb;
+
+    --text: #1a1f26;
+    --text-muted: #525c66;
+    --text-faint: #7c8794;
+
+    --series-2: #b45309;
+    --series-3: #7c3aed;
+    --series-4: #047857;
+    --series-5: #dc2626;
+    --series-6: #2563eb;
+    --series-7: #db2777;
+    --series-8: #4d7c0f;
+
+    --div-mid: #f0efec;
+
+    --status-ok: #047857;
+    --status-warn: #b45309;
+    --status-bad: #b91c1c;
+
+    --focus: #0891b2;
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --surface: #fafafa;
+  --panel: #ffffff;
+  --panel-raised: #f4f4f2;
+  --border: #e2e2de;
+  --grid: #e4e4e1;
+  --axis: #cfcfcb;
+
+  --text: #1a1f26;
+  --text-muted: #525c66;
+  --text-faint: #7c8794;
+
+  --series-2: #b45309;
+  --series-3: #7c3aed;
+  --series-4: #047857;
+  --series-5: #dc2626;
+  --series-6: #2563eb;
+  --series-7: #db2777;
+  --series-8: #4d7c0f;
+
+  --div-mid: #f0efec;
+
+  --status-ok: #047857;
+  --status-warn: #b45309;
+  --status-bad: #b91c1c;
+
+  --focus: #0891b2;
+}
+
+html,
+body {
+  background: var(--surface);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+* {
+  border-color: var(--border);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Observable Plot renders its own svg; these pull its defaults onto the tokens
+   so text never wears a series colour and the grid stays recessive. */
+.cf-plot svg {
+  background: transparent;
+  overflow: visible;
+}
+
+.cf-plot svg text {
+  fill: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+}
+
+.cf-plot [aria-label='x-axis tick'] line,
+.cf-plot [aria-label='y-axis tick'] line,
+.cf-plot [aria-label='fy-axis tick'] line {
+  stroke: var(--axis);
+}
+
+.cf-plot [aria-label='x-grid'] line,
+.cf-plot [aria-label='y-grid'] line {
+  stroke: var(--grid);
+  stroke-opacity: 1;
+}
+
+.cf-plot [aria-label='x-axis label'] text,
+.cf-plot [aria-label='y-axis label'] text {
+  fill: var(--text-faint);
+}
+
+.cf-scroll::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.cf-scroll::-webkit-scrollbar-thumb {
+  background: var(--axis);
+  border-radius: 4px;
+}
+
+.cf-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* MapLibre ships a stylesheet that assumes a light page. Only the pieces the
+   plain style actually uses are overridden. */
+.maplibregl-canvas:focus {
+  outline: none;
+}
+
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib a {
+  background: transparent !important;
+  color: var(--text-faint) !important;
+  font-size: 10px;
+}
+
+.maplibregl-popup-content {
+  background: var(--panel-raised) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px !important;
+  font-size: 12px;
+  box-shadow: none !important;
+}
+
+.maplibregl-popup-tip {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

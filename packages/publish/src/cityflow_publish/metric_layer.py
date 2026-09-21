@@ -64,6 +64,7 @@ class Metric:
     models: tuple[str, ...]
     filters: tuple[str, ...] = ()
     interval: IntervalMethod | None = None
+    interval_note: str = ""
     numerator: str | None = None
     denominator: str | None = None
 
@@ -90,6 +91,13 @@ class Metric:
                     "and denominator columns, or the interval cannot be built "
                     "in the browser."
                 )
+        if self.interval is None and not self.interval_note:
+            raise MetricLayerError(
+                f"{self.name} carries no interval and no interval_note. A rate "
+                "or a level displayed without an interval has to say why, or a "
+                "reader cannot tell the difference between a number that needs "
+                "no interval and one whose interval was forgotten."
+            )
         if self.kind == "sum" and self.interval is not None:
             raise MetricLayerError(
                 f"{self.name}: a total is not an estimate and does not take an interval."
@@ -161,6 +169,7 @@ class MetricLayer:
                     models=tuple(entry.get("models", defaults.get("models", ()))),
                     filters=tuple(entry.get("filters", ())),
                     interval=entry.get("interval"),
+                    interval_note=_collapse(entry.get("interval_note", "")),
                     numerator=entry.get("numerator"),
                     denominator=entry.get("denominator"),
                 )
@@ -214,6 +223,7 @@ class MetricLayer:
                 "unit": metric.unit,
                 "format": metric.format,
                 "interval": metric.interval,
+                "interval_note": metric.interval_note,
                 "filters": list(metric.filters),
                 "owner": metric.owner,
                 "models": list(metric.models),

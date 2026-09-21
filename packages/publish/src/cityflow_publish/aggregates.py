@@ -186,6 +186,53 @@ def build_zone_hour(
     )
 
 
+def build_hour_of_week(
+    connection: duckdb.DuckDBPyConnection,
+    paths: Paths,
+    components: Sequence[str],
+    fact_rows: int,
+) -> AggregateResult:
+    """Day of week by hour, by borough, month and service.
+
+    This exists because the hour of week heatmap is a hundred and sixty eight
+    measured cells or it is decoration. agg_zone_hour carries day type, which
+    is two shapes for seven days, and reconstructing Tuesday from a weekday
+    average and a daily total gives a grid where five rows are identical by
+    construction. A reader cannot tell that from looking, which is exactly why
+    it cannot ship.
+
+    Borough rather than zone, because the heatmap's own filter is borough and
+    the zone grain would multiply this file by forty for a chart that never
+    shows a zone.
+    """
+    path = paths.shipped / "agg_hour_of_week.parquet"
+    sql = f"""
+    select
+        date_trunc('month', f.pickup_date)::date as month,
+        f.service,
+        z.borough,
+        d.day_of_week,
+        d.day_name,
+        f.pickup_hour as hour,
+        {component_select(components)}
+    from fct_trip f
+    join dim_date d on d.date_day = f.pickup_date
+    join dim_zone z on z.zone_id = f.pu_zone_id
+    group by 1, 2, 3, 4, 5, 6
+    order by f.service, z.borough, d.day_of_week, f.pickup_hour, month
+    """
+    rows = _write(connection, sql, path, row_group=AGGREGATE_ROW_GROUP)
+    return AggregateResult(
+        name=path.name,
+        path=path,
+        rows=rows,
+        bytes=path.stat().st_size,
+        source_rows=fact_rows,
+        sort_key="service, borough, day_of_week, hour, month",
+        note="The measured 168 cell grid. Borough grain, not zone.",
+    )
+
+
 def build_daily(
     connection: duckdb.DuckDBPyConnection,
     paths: Paths,
@@ -462,6 +509,7 @@ def build_all(
 
     results = [
         build_zone_hour(connection, paths, components, fact_rows),
+        build_hour_of_week(connection, paths, components, fact_rows),
         build_daily(connection, paths, components, fact_rows),
         build_od_flow(connection, paths, fact_rows),
         build_duration_distribution(connection, paths, fact_rows),
