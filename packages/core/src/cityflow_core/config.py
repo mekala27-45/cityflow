@@ -9,8 +9,9 @@ document and the code cannot drift.
 from __future__ import annotations
 
 import datetime as dt
+import os
 from pathlib import Path
-from typing import Literal, Self
+from typing import Any, Literal, Self
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -208,9 +209,23 @@ class CityflowConfig(StrictModel):
 
 
 def load_config(path: Path | None = None) -> CityflowConfig:
-    """Read config/cityflow.yml, or the defaults when it is absent."""
+    """Read config/cityflow.yml, or the defaults when it is absent.
+
+    CITYFLOW_BACKEND overrides the backend after the file is read, so the same
+    committed configuration can build either warehouse without an edit. That is
+    the only field with an override: everything else is a property of the build
+    and belongs in version control where a reviewer can see it.
+    """
     target = path or (repo_root() / "config" / "cityflow.yml")
-    if not target.is_file():
-        return CityflowConfig()
-    raw = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+    raw: dict[str, Any] = {}
+    if target.is_file():
+        raw = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+
+    override = os.environ.get("CITYFLOW_BACKEND")
+    if override:
+        if override not in ("tlc", "synthetic"):
+            raise ValueError(
+                f"CITYFLOW_BACKEND is {override!r}, expected 'tlc' or 'synthetic'."
+            )
+        raw["backend"] = override
     return CityflowConfig.model_validate(raw)

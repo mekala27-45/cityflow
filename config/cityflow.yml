@@ -1,0 +1,53 @@
+# The build, described. Every threshold here is printed in docs/data.md next to
+# the number of rows it removed, so the document cannot drift from the code.
+
+# tlc reads the published TLC parquet over HTTPS. synthetic runs the seeded
+# generator. Both take the same path through the vintage mapping, the
+# normalizer and the quarantine rules.
+#
+# The committed default is synthetic, for one reason: this repository was built
+# on a machine whose egress policy denies the TLC distribution host, and a
+# default that cannot run on the machine it was written on is not a default.
+# CI is in the same position and always will be. Set CITYFLOW_BACKEND=tlc, or
+# run `make ingest-tlc`, to build the real warehouse.
+backend: synthetic
+
+services: [yellow, green, fhvhv]
+start: 2024-01-01
+end: 2024-12-01
+
+# The one month published at trip grain, so browser drill down reaches an
+# actual row rather than stopping at an aggregate. June is chosen because it is
+# a full month with no federal holiday distorting it.
+detail_month: 2024-06-01
+
+duckdb_memory_limit: 10GB
+duckdb_threads: 4
+
+shipped_file_budget_mb: 95.0
+shipped_total_budget_mb: 400.0
+
+quarantine:
+  period_tolerance_days: 2
+  max_implied_speed_mph: 80.0
+  max_trip_hours: 12.0
+  max_trip_miles: 200.0
+  max_fare_amount: 2000.0
+  max_passenger_count: 9
+  min_trip_seconds: 10
+
+synthetic:
+  seed: 20260916
+  trips_per_month:
+    yellow: 3000000
+    green: 55000
+    fhvhv: 19000000
+  defect_rates:
+    timestamp_out_of_period: 0.00012
+    dropoff_before_pickup: 0.00008
+    non_positive_distance: 0.0031
+    non_positive_fare: 0.00055
+    implausible_speed: 0.00042
+    unknown_zone: 0.0146
+    exact_duplicate: 0.00004
+    passenger_count_zero: 0.0021
