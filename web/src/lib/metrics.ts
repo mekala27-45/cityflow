@@ -8,12 +8,24 @@
 import type { Metric } from './types';
 
 const BROWSER_SHAPE = /^\s*select\s+([\s\S]+?)\s+from\s+agg\s*$/i;
-const WAREHOUSE_SHAPE = /^\s*select\s+([\s\S]+?)\s+from\s+fct_trip\s*$/i;
 
 export class MetricCatalog {
   private readonly byName: Map<string, Metric>;
 
   constructor(readonly metrics: Metric[]) {
+    // A metric with no interval method and no reason for it cannot be published
+    // by the current catalog, so seeing one means something upstream is broken
+    // and the page should say so rather than quietly print a level with nothing
+    // next to it.
+    const unexplained = metrics.filter((m) => m.interval === null && !m.interval_note);
+    if (unexplained.length > 0) {
+      const names = unexplained.map((m) => m.name).join(', ');
+      throw new Error(
+        `metric_catalog.json is malformed: ${names} ${
+          unexplained.length === 1 ? 'declares' : 'declare'
+        } neither an interval method nor an interval_note.`,
+      );
+    }
     this.byName = new Map(metrics.map((m) => [m.name, m]));
   }
 
@@ -48,24 +60,14 @@ export class MetricCatalog {
   projections(names: readonly string[]): string {
     return names.map((n) => this.projection(n)).join(',\n       ');
   }
-
-  /**
-   * The warehouse form of the same definition, for the one relation that is row
-   * level rather than pre aggregated: detail_2024_06. Falls back to the browser
-   * form for metrics whose warehouse_sql does not read fct_trip directly.
-   */
-  rowLevelProjection(name: string): string | null {
-    const metric = this.get(name);
-    const match = WAREHOUSE_SHAPE.exec(metric.warehouse_sql);
-    return match && match[1] ? match[1] : null;
-  }
 }
 
-/** A metric whose catalog entry names an interval method can show one. */
-export function hasInterval(metric: Metric): boolean {
-  return metric.interval !== null;
-}
-
+/**
+ * What to print next to a level: the method where the catalog names one, and the
+ * catalog's own sentence explaining the absence where it does not. The page never
+ * writes that explanation itself, because the reason a ratio of two totals takes
+ * no interval is a property of the metric, not of the chart showing it.
+ */
 export function intervalNote(metric: Metric): string {
   switch (metric.interval) {
     case 'wilson':
@@ -73,6 +75,6 @@ export function intervalNote(metric: Metric): string {
     case 'student-t':
       return 'Student t interval, 95 percent';
     default:
-      return 'the catalog defines no interval method for this metric';
+      return metric.interval_note ?? 'no interval method and no reason given, which the loader should have rejected';
   }
 }

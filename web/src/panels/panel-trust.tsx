@@ -2,6 +2,7 @@
 
 import { Panel } from '@/components/panel';
 import { ProvenanceBanner } from '@/components/provenance';
+import { BenchTable } from '@/charts/bench-table';
 import { NullRates } from '@/charts/null-rates';
 import { QuarantineLog } from '@/charts/quarantine-log';
 import { SourceFreshness } from '@/charts/source-freshness';
@@ -24,6 +25,7 @@ export function PanelTrust() {
       <QuarantineLog />
       <SourceFreshness />
       <NullRates />
+      <BenchTable />
     </Panel>
   );
 }

@@ -1,64 +1,101 @@
 {
   "q": 0.05,
   "min_size_days": 14,
+  "min_effect": 0.06,
+  "found": 35,
+  "below_effect_floor": 25,
+  "searched_on": "the STL trend component, not the observed series",
   "stl_period": 7,
   "detected": {
     "fhvhv": [
       {
-        "date": "2024-02-01",
-        "index": 31,
-        "before_mean": 3110.6,
-        "after_mean": 3259.6,
-        "relative_change": 0.0479,
+        "date": "2022-02-03",
+        "index": 217,
+        "before_mean": 62298.8,
+        "after_mean": 67097.9,
+        "relative_change": 0.077,
         "direction": "up"
       },
       {
-        "date": "2024-02-18",
-        "index": 48,
-        "before_mean": 3223.4,
-        "after_mean": 3105.1,
-        "relative_change": -0.0367,
+        "date": "2022-02-28",
+        "index": 242,
+        "before_mean": 67418.7,
+        "after_mean": 61454.2,
+        "relative_change": -0.0885,
         "direction": "down"
       },
       {
-        "date": "2024-07-26",
-        "index": 207,
-        "before_mean": 3075.5,
-        "after_mean": 3084.6,
-        "relative_change": 0.003,
-        "direction": "up"
+        "date": "2023-03-03",
+        "index": 610,
+        "before_mean": 67064.7,
+        "after_mean": 60785.6,
+        "relative_change": -0.0936,
+        "direction": "down"
+      },
+      {
+        "date": "2024-02-29",
+        "index": 973,
+        "before_mean": 65165.4,
+        "after_mean": 60645.1,
+        "relative_change": -0.0694,
+        "direction": "down"
       },
       {
         "date": "2024-08-11",
-        "index": 223,
-        "before_mean": 3178.5,
-        "after_mean": 2934.2,
-        "relative_change": -0.0768,
+        "index": 1137,
+        "before_mean": 63449.9,
+        "after_mean": 58634.2,
+        "relative_change": -0.0759,
         "direction": "down"
       },
       {
-        "date": "2024-09-05",
-        "index": 248,
-        "before_mean": 2936.5,
-        "after_mean": 3209.4,
-        "relative_change": 0.0929,
+        "date": "2024-09-01",
+        "index": 1158,
+        "before_mean": 59669.8,
+        "after_mean": 63503.2,
+        "relative_change": 0.0642,
         "direction": "up"
-      },
-      {
-        "date": "2024-09-29",
-        "index": 272,
-        "before_mean": 3174.0,
-        "after_mean": 3068.2,
-        "relative_change": -0.0333,
-        "direction": "down"
       }
     ],
     "green": [],
-    "yellow": []
+    "yellow": [
+      {
+        "date": "2022-02-04",
+        "index": 218,
+        "before_mean": 9819.5,
+        "after_mean": 10549.9,
+        "relative_change": 0.0744,
+        "direction": "up"
+      },
+      {
+        "date": "2022-02-25",
+        "index": 239,
+        "before_mean": 10508.5,
+        "after_mean": 9825.9,
+        "relative_change": -0.065,
+        "direction": "down"
+      },
+      {
+        "date": "2023-01-31",
+        "index": 579,
+        "before_mean": 9931.0,
+        "after_mean": 10625.7,
+        "relative_change": 0.07,
+        "direction": "up"
+      },
+      {
+        "date": "2023-03-01",
+        "index": 608,
+        "before_mean": 10644.2,
+        "after_mean": 9584.6,
+        "relative_change": -0.0995,
+        "direction": "down"
+      }
+    ]
   },
   "generated_for_window": [
-    "2024-01-01",
+    "2021-07-01",
     "2024-12-01"
   ],
-  "generated_at": "2026-09-21T18:55:05.105902+00:00"
+  "generated_at": "2026-09-21T20:03:54.373825+00:00"
 }

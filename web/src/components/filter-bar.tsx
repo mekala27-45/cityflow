@@ -2,7 +2,7 @@
 
 import { useApp } from './app-context';
 import { serviceColor, SERVICE_LABEL } from '@/lib/palette';
-import { ALL_BOROUGHS, ALL_DAY_TYPES, ALL_SERVICES, DEFAULT_FILTERS, type Filters } from '@/lib/sql';
+import { ALL_BOROUGHS, ALL_DAY_TYPES, ALL_SERVICES, windowFromManifest, type Filters } from '@/lib/sql';
 
 function toggle(list: string[], value: string, atLeastOne: boolean): string[] {
   const next = list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -57,12 +57,14 @@ function Group({ label, children }: { label: string; children: React.ReactNode }
  * rather than the control quietly doing nothing.
  */
 export function FilterBar() {
-  const { filters, setFilters, resetFilters, theme } = useApp();
+  const { filters, setFilters, resetFilters, theme, manifest } = useApp();
 
+  // The pickers are bounded by the window the build published, so a date outside
+  // the source cannot be entered at all rather than quietly returning nothing.
+  const bounds = manifest?.window ? windowFromManifest(manifest.window) : null;
   const patch = (next: Partial<Filters>) => setFilters((prev) => ({ ...prev, ...next }));
   const isDefault =
-    filters.from === DEFAULT_FILTERS.from &&
-    filters.to === DEFAULT_FILTERS.to &&
+    (!bounds || (filters.from === bounds.from && filters.to === bounds.to)) &&
     filters.services.length === ALL_SERVICES.length &&
     filters.dayTypes.length === ALL_DAY_TYPES.length &&
     filters.boroughs.length === 0;
@@ -80,7 +82,7 @@ export function FilterBar() {
             aria-label="Start date"
             data-testid="filter-from"
             value={filters.from}
-            min="2024-01-01"
+            min={bounds?.from}
             max={filters.to}
             onChange={(e) => e.target.value && patch({ from: e.target.value })}
             className="rounded border px-2 py-1 text-xs"
@@ -95,7 +97,7 @@ export function FilterBar() {
             data-testid="filter-to"
             value={filters.to}
             min={filters.from}
-            max="2024-12-31"
+            max={bounds?.to}
             onChange={(e) => e.target.value && patch({ to: e.target.value })}
             className="rounded border px-2 py-1 text-xs"
             style={{ borderColor: 'var(--border)', background: 'var(--panel)', color: 'var(--text)' }}

@@ -5,6 +5,7 @@ description = "Aggregate builders, the parquet writer and the shipped size budge
 requires-python = ">=3.12"
 dependencies = [
     "cityflow-core",
+    "cityflow-ingest",
     "cityflow-stats",
     "duckdb>=1.1",
     "pyarrow>=18.0",

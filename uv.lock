@@ -420,6 +420,7 @@ version = "0.1.0"
 source = { editable = "packages/publish" }
 dependencies = [
     { name = "cityflow-core" },
+    { name = "cityflow-ingest" },
     { name = "cityflow-stats" },
     { name = "duckdb" },
     { name = "pyarrow" },
@@ -431,6 +432,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "cityflow-core", editable = "packages/core" },
+    { name = "cityflow-ingest", editable = "packages/ingest" },
     { name = "cityflow-stats", editable = "packages/stats" },
     { name = "duckdb", specifier = ">=1.1" },
     { name = "pyarrow", specifier = ">=18.0" },

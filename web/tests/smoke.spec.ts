@@ -1,4 +1,39 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+
+// scripts/bench_queries.py folds this file into the published benchmark when it
+// is present, joining on the label. Latency it can measure locally; bytes over
+// the wire it cannot, because a local read is a file read. This is the only
+// place that number exists.
+const QUERY_LOG = 'tests/query-log.json';
+
+/** The bench rows this page actually issues a query for, by label. A bench row
+ *  whose query reads a different file is deliberately absent: attaching these
+ *  byte counts to it would put one query's traffic beside another's file. */
+const BENCH_LABELS = new Set([
+  'Daily volume with trend',
+  'Hour of week grid',
+  'Choropleth, trips by zone',
+  'Top origin destination flows',
+  'Duration ridgeline',
+  'Fare against distance hexbin',
+]);
+
+function writeQueryLog(queries: QueryLog['queries']): number {
+  // One entry per label, taking the live run rather than a cache hit, which by
+  // construction pulled nothing.
+  const byLabel = new Map<string, { label: string; bytes: number; requests: number }>();
+  for (const q of queries) {
+    if (q.cached || q.error || !BENCH_LABELS.has(q.label)) continue;
+    if (byLabel.has(q.label)) continue;
+    byLabel.set(q.label, { label: q.label, bytes: q.bytes, requests: q.requests });
+  }
+  const entries = [...byLabel.values()].sort((a, b) => a.label.localeCompare(b.label));
+  mkdirSync(dirname(QUERY_LOG), { recursive: true });
+  writeFileSync(QUERY_LOG, `${JSON.stringify(entries, null, 2)}\n`, 'utf8');
+  return entries.length;
+}
 
 const PANELS = [
   { id: 'pulse', chart: 'chart-hour-of-week' },
@@ -10,7 +45,15 @@ const PANELS = [
 ] as const;
 
 interface QueryLog {
-  queries: { label: string; durationMs: number; bytes: number; rows: number; cached: boolean; error?: string }[];
+  queries: {
+    label: string;
+    durationMs: number;
+    bytes: number;
+    requests: number;
+    rows: number;
+    cached: boolean;
+    error?: string;
+  }[];
   engineReadyMs: number | null;
   firstPaintMs: number | null;
   totalBytes: number;
@@ -21,7 +64,14 @@ interface QueryLog {
 declare global {
   interface Window {
     __cityflowQueryLog?: QueryLog;
+    __cityflowQuery?: (sql: string) => Promise<unknown[]>;
   }
+}
+
+interface HourCell {
+  dow: number;
+  hour: number;
+  trips: number;
 }
 
 async function waitForEngine(page: Page): Promise<void> {
@@ -111,7 +161,59 @@ test.describe('cityflow dashboard', () => {
     await page.getByTestId('filter-service-fhvhv').click();
     await expect.poll(async () => (await tripsTile.textContent())?.trim(), { timeout: 30_000 }).toBe(before);
 
-    // 4. The table toggle swaps the chart for the rows behind it.
+    // 4. The hour of week grid is 168 measured cells.
+    //
+    // This is the check that would have caught the earlier version, which
+    // reconstructed the grid by splitting a daily level with a day type hour
+    // profile. That construction gave the five weekdays one shape and the two
+    // weekend days another, so it is caught twice over: once by comparing rows
+    // for equality, and once, with more teeth, by comparing them after
+    // normalising away the day's volume. Two days can legitimately be busy in
+    // the same hours; two days cannot legitimately have identical profiles to
+    // fifteen decimal places.
+    const heatmap = page.getByTestId('chart-hour-of-week');
+    await heatmap.scrollIntoViewIfNeeded();
+    await expect(heatmap.locator('svg g[aria-label="cell"] rect')).toHaveCount(168);
+
+    const grid = (await page.evaluate(async () => {
+      const run = window.__cityflowQuery;
+      if (!run) return [];
+      return (await run(
+        `with agg as (select day_of_week, hour, trips from 'agg_hour_of_week.parquet')
+         select day_of_week::int as dow, hour::int as hour, sum(trips) as trips
+         from agg group by 1, 2 order by 1, 2`,
+      )) as HourCell[];
+    })) as HourCell[];
+
+    expect(grid).toHaveLength(168);
+    expect(new Set(grid.map((c) => c.dow)).size).toBe(7);
+    expect(new Set(grid.map((c) => c.hour)).size).toBe(24);
+
+    const rows = [...new Set(grid.map((c) => c.dow))].sort((a, b) => a - b).map((dow) =>
+      grid
+        .filter((c) => c.dow === dow)
+        .sort((a, b) => a.hour - b.hour)
+        .map((c) => Number(c.trips)),
+    );
+    for (let i = 0; i < rows.length; i += 1) {
+      for (let j = i + 1; j < rows.length; j += 1) {
+        const a = rows[i]!;
+        const b = rows[j]!;
+        expect(a.join(','), `days ${i} and ${j} have identical hourly counts`).not.toBe(b.join(','));
+
+        const scaleA = a.reduce((acc, v) => acc + v, 0);
+        const scaleB = b.reduce((acc, v) => acc + v, 0);
+        expect(scaleA).toBeGreaterThan(0);
+        expect(scaleB).toBeGreaterThan(0);
+        const shapeA = a.map((v) => (v / scaleA).toFixed(12)).join(',');
+        const shapeB = b.map((v) => (v / scaleB).toFixed(12)).join(',');
+        expect(shapeA, `days ${i} and ${j} share one hourly profile, which is what a reconstruction looks like`).not.toBe(
+          shapeB,
+        );
+      }
+    }
+
+    // 5. The table toggle swaps the chart for the rows behind it.
     const card = page.getByTestId('chart-zone-pareto');
     await card.scrollIntoViewIfNeeded();
     await expect(card.locator('svg').first()).toBeVisible();
@@ -126,6 +228,14 @@ test.describe('cityflow dashboard', () => {
 
     expect(offOrigin, `requests left the origin: ${offOrigin.join(' | ')}`).toHaveLength(0);
     expect(consoleErrors, `console errors: ${consoleErrors.join(' | ')}`).toHaveLength(0);
+
+    // 6. Hand the byte counts to the benchmark script.
+    const finalLog = await page.evaluate(() => window.__cityflowQueryLog);
+    const written = writeQueryLog(finalLog?.queries ?? []);
+    expect(written, 'no benchmarked query was captured for the byte log').toBeGreaterThanOrEqual(
+      BENCH_LABELS.size,
+    );
+    testInfo.annotations.push({ type: 'queryLogEntries', description: String(written) });
   });
 
   test('captures each panel', async ({ page }) => {

@@ -49,6 +49,22 @@ function Header() {
   );
 }
 
+function CatalogAlarm() {
+  const { catalogError } = useApp();
+  if (!catalogError) return null;
+  return (
+    <div
+      role="alert"
+      data-testid="catalog-error"
+      className="mt-3 rounded-lg border px-4 py-3 text-sm"
+      style={{ borderColor: 'var(--status-bad)', color: 'var(--status-bad)' }}
+    >
+      <strong>The metric catalog is not usable.</strong> {catalogError} Every figure on this page is
+      spliced out of that file, so nothing below can be trusted until it is fixed.
+    </div>
+  );
+}
+
 function Shell() {
   return (
     <>
@@ -57,6 +73,7 @@ function Shell() {
       <main className="mx-auto max-w-[1600px] px-4 py-5">
         <div className="mb-5">
           <ProvenanceBanner />
+          <CatalogAlarm />
         </div>
         <div className="grid gap-6 lg:grid-cols-[168px_minmax(0,1fr)]">
           <NavRail />

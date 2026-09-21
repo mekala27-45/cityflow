@@ -1,26 +1,25 @@
 'use client';
 
 import { useApp } from './app-context';
-import { compactCount } from '@/lib/format';
+import { compactCount, monthLabel } from '@/lib/format';
 
-// The section this points at lives in web/README.md, which ships with the code
-// that draws the banner, so the link and the explanation move together.
-export const REPO_PROVENANCE_URL =
-  'https://github.com/mekala27-45/cityflow/blob/main/web/README.md#data-provenance';
+export const REPO_PROVENANCE_URL = 'https://github.com/mekala27-45/cityflow#data-provenance';
 
 /**
- * The backend column of mart_source_freshness decides what this says. It is read,
- * not assumed: if the pipeline is ever pointed at the published TLC files the
- * banner changes on its own. Until then the page has to be plain about the fact
- * that every figure on it is measured on a generator.
+ * manifest.json decides what this says. The backend and the window are read from
+ * the same file the written documents are rendered from, so the banner and the
+ * prose cannot disagree about what was published: if the pipeline is ever pointed
+ * at the real TLC files, both change together and neither needs editing.
  */
 export function ProvenanceBanner({ testId = 'provenance-banner' }: { testId?: string } = {}) {
-  const { bootstrap } = useApp();
+  const { bootstrap, manifest } = useApp();
   const provenance = bootstrap?.provenance;
-  const backend = provenance?.backend ?? null;
-  const synthetic = backend === 'synthetic';
+  const backends = manifest?.backend ?? [];
+  const backend = backends.length > 0 ? backends.join(' and ') : (provenance?.backend ?? null);
+  const synthetic = backends.length > 0 ? backends.every((b) => b === 'synthetic') : backend === 'synthetic';
+  const window = manifest?.window ?? null;
 
-  if (!provenance) {
+  if (!provenance && !manifest) {
     return (
       <div
         className="rounded-lg border px-4 py-3 text-sm"
@@ -32,10 +31,12 @@ export function ProvenanceBanner({ testId = 'provenance-banner' }: { testId?: st
     );
   }
 
+  const claims = manifest?.claims ?? {};
+
   return (
     <div
       data-testid={testId}
-      data-backend={backend ?? 'unknown'}
+      data-backend={backends[0] ?? backend ?? 'unknown'}
       className="rounded-lg border px-4 py-3"
       style={{
         borderColor: synthetic ? 'var(--status-warn)' : 'var(--border)',
@@ -78,10 +79,16 @@ export function ProvenanceBanner({ testId = 'provenance-banner' }: { testId?: st
         </p>
       </div>
       <p className="mt-2 text-xs" style={{ color: 'var(--text-faint)' }}>
-        {provenance.periods} source periods, {provenance.min_period?.slice(0, 7)} to{' '}
-        {provenance.max_period?.slice(0, 7)}. {compactCount(provenance.source_rows)} rows read,{' '}
-        {compactCount(provenance.clean_rows)} kept, {compactCount(provenance.quarantined_rows)} quarantined.{' '}
-        {provenance.gaps === 0 ? 'No month is missing a predecessor.' : `${provenance.gaps} periods follow a gap.`}
+        {claims.months ?? provenance?.periods} source periods
+        {window ? `, ${monthLabel(window.start)} to ${monthLabel(window.end)}` : ''}.{' '}
+        {compactCount(Number(claims.source_rows ?? provenance?.source_rows ?? 0))} rows read,{' '}
+        {compactCount(Number(claims.clean_rows ?? provenance?.clean_rows ?? 0))} kept,{' '}
+        {compactCount(Number(claims.quarantined_rows ?? provenance?.quarantined_rows ?? 0))} quarantined
+        {claims.vintages ? `, across ${claims.vintages} schema vintages` : ''}.{' '}
+        {provenance && provenance.gaps > 0
+          ? `${provenance.gaps} periods follow a gap.`
+          : 'No month is missing a predecessor.'}{' '}
+        {manifest ? `Built from commit ${manifest.commit}.` : ''}
       </p>
     </div>
   );
@@ -89,10 +96,11 @@ export function ProvenanceBanner({ testId = 'provenance-banner' }: { testId?: st
 
 /** Compact restatement for the page header, so the caveat rides along on scroll. */
 export function ProvenancePill() {
-  const { bootstrap } = useApp();
-  const backend = bootstrap?.provenance.backend;
+  const { bootstrap, manifest } = useApp();
+  const backends = manifest?.backend ?? [];
+  const backend = backends.length > 0 ? backends.join(' and ') : bootstrap?.provenance.backend;
   if (!backend) return null;
-  const synthetic = backend === 'synthetic';
+  const synthetic = backends.length > 0 ? backends.every((b) => b === 'synthetic') : backend === 'synthetic';
   return (
     <a
       href={synthetic ? REPO_PROVENANCE_URL : '#trust'}

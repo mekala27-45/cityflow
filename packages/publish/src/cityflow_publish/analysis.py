@@ -54,6 +54,21 @@ STL_PERIOD = 7
 # detector finds the edges of holidays, which are already annotated.
 CHANGEPOINT_MIN_SIZE = 14
 
+# The BIC penalty is derived from the residual scale, which on a trend series is
+# small by construction, so it alone admits shifts too small to mean anything.
+# This multiplier sets the floor at a level change a reader would call a change.
+# It is a judgement, it is stated here rather than buried, and docs/statistics.md
+# reports how many changepoints it admits and how many it excludes.
+CHANGEPOINT_PENALTY_SCALE = 40.0
+
+# A changepoint is annotated only when the level actually moved by this much.
+# Detection and importance are different questions: PELT answers "did the level
+# change", and on a smoothed trend over a long window it answers yes to shifts
+# of one percent, which nobody can act on and which crowd out the ones they can.
+# The count excluded by this floor is published rather than hidden, so a reader
+# can see how much was found and how much was kept.
+CHANGEPOINT_MIN_EFFECT = 0.06
+
 
 @dataclass(slots=True)
 class AnalysisOutputs:
@@ -61,6 +76,8 @@ class AnalysisOutputs:
 
     decomposition_rows: int = 0
     changepoints: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    changepoints_found: int = 0
+    changepoints_below_effect_floor: int = 0
     zone_comparisons: int = 0
     zone_comparisons_significant: int = 0
     pairwise_comparisons: int = 0
@@ -117,13 +134,21 @@ def build_decomposition(
                 "seasonal phase without complaining."
             )
 
-        signal = result.observed.to_numpy(dtype=float)
-        sigma = estimate_sigma(signal)
-        penalty = bic_penalty(len(signal), sigma, n_params=2)
+        # The search runs on the trend component, not on the observed series.
+        # Observed volume carries a weekly cycle with an amplitude larger than
+        # most level shifts, and a changepoint search cannot tell a shift from
+        # the sixth Friday in a row: over this window it found eighty five
+        # changepoints, which is not a finding, it is the seasonality restated.
+        # The trend is what "the level moved and stayed moved" means.
+        signal = result.trend.to_numpy(dtype=float)
+        sigma = estimate_sigma(result.resid.to_numpy(dtype=float))
+        penalty = bic_penalty(len(signal), sigma, n_params=2) * CHANGEPOINT_PENALTY_SCALE
         indices = pelt(signal, penalty=penalty, min_size=CHANGEPOINT_MIN_SIZE)
-        outputs.changepoints[str(service)] = [
-            _describe_changepoint(result.observed, index) for index in indices
-        ]
+        described = [_describe_changepoint(result.observed, index) for index in indices]
+        kept = [c for c in described if abs(float(c["relative_change"])) >= CHANGEPOINT_MIN_EFFECT]
+        outputs.changepoints[str(service)] = kept
+        outputs.changepoints_found += len(described)
+        outputs.changepoints_below_effect_floor += len(described) - len(kept)
 
     if pieces:
         combined = pd.concat(pieces, ignore_index=True)
@@ -364,6 +389,10 @@ def run_analysis(
             {
                 "q": FDR_Q,
                 "min_size_days": CHANGEPOINT_MIN_SIZE,
+                "min_effect": CHANGEPOINT_MIN_EFFECT,
+                "found": outputs.changepoints_found,
+                "below_effect_floor": outputs.changepoints_below_effect_floor,
+                "searched_on": "the STL trend component, not the observed series",
                 "stl_period": STL_PERIOD,
                 "detected": outputs.changepoints,
                 "generated_for_window": [

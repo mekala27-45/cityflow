@@ -170,7 +170,7 @@ export function MetricCatalogBrowser({
             <Field label="Unit">{selected.unit}</Field>
             <Field label="Owner">{selected.owner}</Field>
             <Field label="Grain">{selected.grain.join(', ')}</Field>
-            <Field label="Interval method">{selected.interval ?? 'none'}</Field>
+            <Field label="Interval method">{selected.interval ?? 'none, see below'}</Field>
             <Field label="Display format">
               <code style={{ fontFamily: 'var(--font-mono)' }}>{selected.format}</code>
             </Field>
@@ -182,9 +182,17 @@ export function MetricCatalogBrowser({
           </dl>
 
           <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-faint)' }}>
-            Interval: {intervalNote(selected)}. Where this metric appears on a panel, that is the method
-            behind the range printed next to it; where the entry says none, the page shows the level
-            without one and says so rather than inventing a band.
+            {selected.interval ? (
+              <>
+                Interval: {intervalNote(selected)}. That is the method behind every range printed next to
+                this metric on the panels above.
+              </>
+            ) : (
+              <>
+                No interval. {intervalNote(selected)} The page prints this sentence wherever the metric
+                appears, rather than showing a bare level or inventing a band.
+              </>
+            )}
           </p>
 
           <SqlBlock

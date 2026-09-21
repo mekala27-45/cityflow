@@ -54,7 +54,7 @@ export function DurationRidgeline() {
     () => (catalog && engineReady ? buildSql(catalog, filters) : null),
     [catalog, filters, engineReady],
   );
-  const query = useQuery<Row>(sql, 'duration distribution by hour');
+  const query = useQuery<Row>(sql, 'Duration ridgeline');
   const rows = useMemo(() => query.rows ?? [], [query.rows]);
 
   const points = useMemo<RidgePoint[]>(() => {

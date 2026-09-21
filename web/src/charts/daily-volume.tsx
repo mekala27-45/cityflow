@@ -8,7 +8,7 @@ import { DataTable } from '@/components/data-table';
 import { Legend } from '@/components/legend';
 import { PlotFigure } from '@/components/plot-figure';
 import { useQuery } from '@/hooks/use-query';
-import { longDate, signedPercent } from '@/lib/format';
+import { longDate, percent, signedPercent } from '@/lib/format';
 import { seriesColor } from '@/lib/palette';
 import { dailyAgg, dateWindow, servicePredicate, type Filters } from '@/lib/sql';
 import type { MetricCatalog } from '@/lib/metrics';
@@ -49,7 +49,7 @@ export function DailyVolume() {
     () => (catalog && engineReady ? buildSql(catalog, filters) : null),
     [catalog, filters, engineReady],
   );
-  const query = useQuery<Row>(sql, 'daily volume with trend');
+  const query = useQuery<Row>(sql, 'Daily volume with trend');
 
   const fallback = useMemo<Row[]>(() => {
     if (!bootstrap) return [];
@@ -92,14 +92,21 @@ export function DailyVolume() {
   const spec = useCallback(
     (width: number) => {
       const compact = width < 560;
-      // Two changepoints a fortnight apart would overprint at this scale, so the
-      // labels alternate between two heights and anchor away from the rule.
-      const annotated = marks.map((m, index) => ({
-        ...m,
-        iso: m.date,
-        date: new Date(`${m.date}T00:00:00Z`),
-        tier: index % 2,
-      }));
+      // Every changepoint gets a rule and a marker. Only the ones far enough
+      // apart to read get a text label: over three and a half years there are
+      // clusters days wide, and printing all ten produces a smear rather than an
+      // annotation. The footnote lists every one of them, and the markers carry
+      // them individually on hover.
+      const spanMs = points.length > 1 ? points[points.length - 1]!.date.getTime() - points[0]!.date.getTime() : 0;
+      const minGapMs = spanMs / 14;
+      let lastLabelled = Number.NEGATIVE_INFINITY;
+      const annotated = marks.map((m, index) => {
+        const date = new Date(`${m.date}T00:00:00Z`);
+        const labelled = date.getTime() - lastLabelled >= minGapMs;
+        if (labelled) lastLabelled = date.getTime();
+        return { ...m, iso: m.date, date, tier: index % 2, labelled };
+      });
+      const labelled = annotated.filter((d) => d.labelled);
       return {
         width,
         height: compact ? 260 : 340,
@@ -116,20 +123,36 @@ export function DailyVolume() {
             x: 'date',
             y: 'trips',
             stroke: observedColor,
-            strokeWidth: compact ? 1 : 1.25,
-            strokeOpacity: 0.85,
+            // Twelve hundred days of a weekly cycle is a dense line. It is kept
+            // thin and half transparent so the trend layer reads through it
+            // rather than fighting it.
+            strokeWidth: compact ? 0.7 : 0.9,
+            strokeOpacity: 0.55,
           }),
           Plot.lineY(
             points.filter((p) => p.trend !== null),
             { x: 'date', y: 'trend', stroke: trendColor, strokeWidth: 2, strokeLinecap: 'round' as const },
           ),
           Plot.ruleX(annotated, { x: 'date', stroke: ruleColor, strokeWidth: 1.5, strokeDasharray: '3,3' }),
-          Plot.dot(annotated, { x: 'date', y: 0, fill: ruleColor, r: 4, symbol: 'triangle' as const }),
+          Plot.dot(annotated, {
+            x: 'date',
+            y: 0,
+            fill: ruleColor,
+            r: 4,
+            symbol: 'triangle' as const,
+            title: (d: { iso: string; service: string; relative_change: number; before_mean: number; after_mean: number }) =>
+              [
+                `${d.service} on ${d.iso}`,
+                `Level ${signedPercent(d.relative_change)}`,
+                `${Math.round(d.before_mean).toLocaleString('en-US')} to ${Math.round(d.after_mean).toLocaleString('en-US')} trips per day`,
+              ].join('\n'),
+            tip: true,
+          }),
           // dy is a constant in Plot, not a channel, so the two heights are two
           // marks over two halves of the same list.
           ...[0, 1].map((tier) =>
             Plot.text(
-              annotated.filter((d) => d.tier === tier),
+              labelled.filter((d) => d.tier === tier),
               {
                 x: 'date',
                 y: 0,
@@ -168,7 +191,7 @@ export function DailyVolume() {
     <ChartCard
       testId="chart-daily-volume"
       title="Daily trip volume against its trend"
-      subtitle="Observed trips per day with the STL trend component, and every shift the changepoint search found inside the window."
+      subtitle="Observed trips per day with the STL trend component, and every level shift the changepoint search kept."
       legend={
         <Legend
           items={[
@@ -198,15 +221,26 @@ export function DailyVolume() {
         <>
           {marks.length === 0
             ? 'No changepoint falls inside this window for the selected services. '
-            : `${marks.length} changepoints fall inside this window: ${marks
+            : `${marks.length} annotated changepoints fall inside this window: ${marks
                 .map((m) => `${m.service} on ${m.date}, ${signedPercent(m.relative_change)}`)
                 .join('; ')}. `}
-          Changepoints are found by PELT on the STL remainder, period{' '}
+          The search runs PELT on {changepoints?.searched_on ?? 'the STL trend component'}, period{' '}
           {changepoints?.stl_period ?? 7}, minimum segment {changepoints?.min_size_days ?? 14} days, q{' '}
-          {changepoints?.q ?? 0.05}. A detected shift is a change in level, not a cause: the search knows
-          nothing about fare policy, weather or a source that changed shape. The trend layer is joined on
-          date and service only, because agg_daily_decomposition carries no day type, so the day type
-          filter moves the observed line and not the trend.
+          {changepoints?.q ?? 0.05}. Running it on the observed series returned eighty five candidates,
+          because the weekly cycle is larger than most level shifts and PELT was finding the cycle.{' '}
+          {changepoints
+            ? `Across the whole window it found ${changepoints.found} candidates and dropped ${
+                changepoints.below_effect_floor
+              } for moving the level by less than ${percent(changepoints.min_effect, 0)}, leaving ${
+                changepoints.found - changepoints.below_effect_floor
+              } annotated.`
+            : ''}{' '}
+          <strong style={{ color: 'var(--text)' }}>
+            A detected shift is a change in level, not a cause:
+          </strong>{' '}
+          the search knows nothing about fare policy, weather or a source that changed shape. The trend
+          layer is joined on date and service only, because agg_daily_decomposition carries no day type,
+          so the day type filter moves the observed line and not the trend.
         </>
       }
     />

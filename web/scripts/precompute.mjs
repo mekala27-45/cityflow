@@ -70,46 +70,29 @@ export async function buildBootstrap() {
   `);
 
   const trend = await rows(`
-    select date_day::varchar as d, sum(trend) as trend, sum(observed) as observed
+    select date_day::varchar as d, sum(trend) as trend
     from ${p('agg_daily_decomposition.parquet')}
     group by date_day
     order by date_day
   `);
 
-  // The aggregate carries hour by day type, not hour by day of week, so the full
-  // year grid is a product of a measured daily level and a measured hour profile.
-  // The estimate is labelled as one in the panel; see HourOfWeek.tsx.
-  const hourProfile = await rows(`
-    select day_type, hour::int as hour, sum(trips) as trips
-    from ${p('agg_zone_hour.parquet')}
-    group by 1, 2
-    order by 1, 2
+  // 168 measured cells, straight out of the hour of week aggregate.
+  const hourOfWeekRows = await rows(`
+    with agg as (select * from ${p('agg_hour_of_week.parquet')})
+    select day_of_week::int as dow, any_value(day_name) as day, hour::int as hour,
+           ${projection(byName.get('trips'))}
+    from agg
+    group by 1, 3
+    order by 1, 3
   `);
-  const dailyByDow = await rows(`
-    select d.day_of_week::int as dow, any_value(d.day_name) as day_name,
-           any_value(d.day_type) as day_type, avg(t.trips) as mean_trips
-    from (select date_day, sum(trips) as trips from ${p('agg_daily.parquet')} group by 1) t
-    join ${p('dim_date.parquet')} d using (date_day)
-    group by 1
-    order by 1
-  `);
-
-  const profileTotals = new Map();
-  for (const row of hourProfile) {
-    profileTotals.set(row.day_type, (profileTotals.get(row.day_type) ?? 0) + Number(row.trips));
-  }
-  const hourOfWeek = [];
-  for (const day of dailyByDow) {
-    for (const row of hourProfile) {
-      if (row.day_type !== day.day_type) continue;
-      const total = profileTotals.get(row.day_type) ?? 1;
-      hourOfWeek.push({
-        dow: day.dow,
-        day: day.day_name,
-        hour: row.hour,
-        trips: round((Number(row.trips) / total) * Number(day.mean_trips), 1),
-      });
-    }
+  const hourOfWeek = hourOfWeekRows.map((row) => ({
+    dow: Number(row.dow),
+    day: row.day,
+    hour: Number(row.hour),
+    trips: Number(row.trips),
+  }));
+  if (hourOfWeek.length !== 168) {
+    throw new Error(`expected 168 hour of week cells, got ${hourOfWeek.length}`);
   }
 
   const topZones = await rows(`
@@ -145,17 +128,18 @@ export async function buildBootstrap() {
   const payload = {
     generated_at: new Date().toISOString(),
     metrics: KPI_METRICS,
+    // Rounded hard on purpose. This payload is what the page paints before the
+    // engine exists, so every kilobyte is in front of the first number, and no
+    // tile or sparkline is read to a precision these values do not carry.
     daily: daily.map((r) => ({
       d: r.d,
-      day_type: r.day_type,
-      holiday: Boolean(r.holiday),
       trips: Number(r.trips),
-      revenue: round(r.revenue, 2),
-      mean_duration_min: round(r.mean_duration_min, 3),
-      tip_rate: round(r.tip_rate, 5),
-      airport_share: round(r.airport_share, 5),
+      revenue: round(r.revenue, 0),
+      mean_duration_min: round(r.mean_duration_min, 2),
+      tip_rate: round(r.tip_rate, 4),
+      airport_share: round(r.airport_share, 4),
     })),
-    trend: trend.map((r) => ({ d: r.d, trend: round(r.trend, 1), observed: round(r.observed, 1) })),
+    trend: trend.map((r) => ({ d: r.d, trend: round(r.trend, 0) })),
     hour_of_week: hourOfWeek,
     top_zones: topZones.map((r, i) => ({ ...r, trips: Number(r.trips), rank: i + 1 })),
     unknown_zone_share: round(unknown[0]?.unknown_zone_share, 5),

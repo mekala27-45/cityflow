@@ -169,8 +169,15 @@ class CityflowConfig(StrictModel):
     )
     quarantine: QuarantineThresholds = Field(default_factory=QuarantineThresholds)
     synthetic: SyntheticSpec = Field(default_factory=SyntheticSpec)
-    duckdb_memory_limit: str = Field(default="12GB")
-    duckdb_threads: int = Field(default=4, gt=0)
+    duckdb_memory_limit: str = Field(
+        default="3GB",
+        description=(
+            "Must sit below physical memory. DuckDB spills to its temp "
+            "directory at this limit and is killed by the kernel at the real "
+            "one, so a limit above RAM is a crash rather than a larger budget."
+        ),
+    )
+    duckdb_threads: int = Field(default=2, gt=0)
     shipped_file_budget_mb: float = Field(
         default=95.0,
         gt=0,

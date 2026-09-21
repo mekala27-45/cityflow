@@ -1,0 +1,32 @@
+[
+  {
+    "label": "Choropleth, trips by zone",
+    "bytes": 3949942,
+    "requests": 48
+  },
+  {
+    "label": "Daily volume with trend",
+    "bytes": 98746,
+    "requests": 5
+  },
+  {
+    "label": "Duration ridgeline",
+    "bytes": 10352,
+    "requests": 2
+  },
+  {
+    "label": "Fare against distance hexbin",
+    "bytes": 45816,
+    "requests": 4
+  },
+  {
+    "label": "Hour of week grid",
+    "bytes": 457859,
+    "requests": 8
+  },
+  {
+    "label": "Top origin destination flows",
+    "bytes": 6201878,
+    "requests": 136
+  }
+]

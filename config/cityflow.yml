@@ -13,7 +13,13 @@
 backend: synthetic
 
 services: [yellow, green, fhvhv]
-start: 2024-01-01
+
+# The window starts before January 2022 on purpose. The airport fee column
+# appears in the yellow and for hire files that month and not before, so a
+# window that spans it puts a real schema change in front of the null rate
+# panel and stops assert_surcharge_null_before_introduction passing vacuously.
+# A window inside one vintage proves nothing about the vintage mapping.
+start: 2021-07-01
 end: 2024-12-01
 
 # The one month published at trip grain, so browser drill down reaches an
@@ -21,8 +27,11 @@ end: 2024-12-01
 # a full month with no federal holiday distorting it.
 detail_month: 2024-06-01
 
-duckdb_memory_limit: 10GB
-duckdb_threads: 4
+# Below physical memory on purpose. DuckDB spills to temp_directory when it
+# hits this limit and dies when it hits the kernel's, so a limit above RAM is
+# not a bigger budget, it is a crash. Raise it on a machine with more.
+duckdb_memory_limit: 3GB
+duckdb_threads: 2
 
 shipped_file_budget_mb: 95.0
 shipped_total_budget_mb: 400.0

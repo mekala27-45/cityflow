@@ -10,7 +10,7 @@ import { useQuery } from '@/hooks/use-query';
 import { hourLabel, percent } from '@/lib/format';
 import { intervalNote } from '@/lib/metrics';
 import { seriesColor } from '@/lib/palette';
-import { zoneHourAgg, type Filters } from '@/lib/sql';
+import { hourOfWeekAgg, type Filters } from '@/lib/sql';
 import type { MetricCatalog } from '@/lib/metrics';
 
 interface Row {
@@ -20,20 +20,16 @@ interface Row {
   observable_trips: number;
 }
 
-const COLUMNS = [
-  'month',
-  'service',
-  'pu_zone_id',
-  'hour',
-  'day_type',
-  'tip_obs_tip_sum',
-  'tip_obs_fare_sum',
-  'tip_obs_trips',
-] as const;
-
+/**
+ * Read from agg_hour_of_week rather than agg_zone_hour. Both carry borough, hour
+ * and the tip components, but the hour of week aggregate is 4 MB against 25 MB
+ * because it is grouped to borough instead of to zone, and this chart never asks
+ * a question below borough. The cheaper file is not a shortcut here, it is the
+ * right grain.
+ */
 function buildSql(catalog: MetricCatalog, filters: Filters): string {
   const tipRate = catalog.get('tip_rate');
-  return `with ${zoneHourAgg(filters, { columns: COLUMNS })}
+  return `with ${hourOfWeekAgg(filters, { columns: ['hour', 'borough', 'tip_obs_tip_sum', 'tip_obs_fare_sum', 'tip_obs_trips'] })}
 select borough, hour::int as hour,
        ${catalog.projection('tip_rate')},
        sum(${tipRate.components[0]}) as observable_trips
@@ -164,12 +160,11 @@ export function TipRateMultiples() {
           payments: a cash fare records a tip of zero whether or not one was handed over, and folding those
           in would turn a payment mix difference into a generosity difference.{' '}
           <strong style={{ color: 'var(--text)' }}>
-            No interval is shown because {metric ? intervalNote(metric) : 'the catalog defines none for this metric'}.
+            No interval is shown, and the catalog says why: {metric ? intervalNote(metric) : 'the catalog could not be read.'}
           </strong>{' '}
-          The related proportion, tipped_share, does carry a Wilson interval, and panel two shows it with
-          one. The observable trip count is in the tooltip and the table so a point built on a few hundred
-          trips is not read as firmly as one built on a hundred thousand. All four filters reach this
-          chart; borough is applied to the pickup zone.
+          The observable trip count is in the tooltip and the table so a point built on a few hundred trips
+          is not read as firmly as one built on a hundred thousand. All four filters reach this chart;
+          borough is applied to the pickup zone.
         </>
       }
     />

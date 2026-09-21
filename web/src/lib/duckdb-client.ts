@@ -38,11 +38,17 @@ function manualBundles(): duckdb.DuckDBBundles {
 // page does not cost the 7 MB the directory holds.
 export const PARQUET_FILES = [
   'agg_zone_hour.parquet',
+  'agg_hour_of_week.parquet',
   'agg_daily.parquet',
   'agg_daily_decomposition.parquet',
   'agg_od_flow.parquet',
   'agg_duration_dist.parquet',
   'agg_fare_distance.parquet',
+  // No panel reads the trip level extract any more, now that the hour of week
+  // grid is measured. It stays registered because registration is lazy and costs
+  // nothing until a query names the file, and because it is what makes the detail
+  // table reachable from window.__cityflowQuery for anyone checking an aggregate
+  // against the rows underneath it.
   'detail_2024_06.parquet',
   'zone_comparisons.parquet',
   'dim_zone.parquet',
@@ -54,10 +60,6 @@ export const PARQUET_FILES = [
   'mart_source_freshness.parquet',
   'mart_null_rates.parquet',
 ] as const;
-
-export type ParquetFile = (typeof PARQUET_FILES)[number];
-
-export type EngineStatus = 'idle' | 'loading' | 'ready' | 'failed';
 
 export interface QueryResult<Row> {
   rows: Row[];
@@ -88,10 +90,6 @@ function acquire(): Promise<() => void> {
   const waitFor = lock;
   lock = lock.then(() => next);
   return waitFor.then(() => release);
-}
-
-export function engineStarted(): boolean {
-  return dbPromise !== null;
 }
 
 async function boot(): Promise<duckdb.AsyncDuckDB> {
@@ -245,10 +243,6 @@ export async function runQuery<Row>(sql: string, options: RunOptions = {}): Prom
   } finally {
     release();
   }
-}
-
-export function clearQueryCache(): void {
-  cache.clear();
 }
 
 export function cacheSize(): number {

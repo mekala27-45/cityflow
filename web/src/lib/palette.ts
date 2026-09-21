@@ -9,28 +9,58 @@ export const SURFACE: Record<ThemeName, string> = {
   light: '#FAFAFA',
 };
 
+/**
+ * Eight categorical hues per surface, validated by scripts/validate_palette.js.
+ * Slot 6 is #2563EB on dark and #1D4ED8 on light rather than a lighter blue:
+ * the earlier value sat within 0.014 lightness and 0.020 chroma of slot 5's red,
+ * under the validator's floors, which is the pair a reader would have had to
+ * separate by hue alone.
+ */
 export const SERIES: Record<ThemeName, readonly string[]> = {
-  dark: ['#0891B2', '#D97706', '#8B5CF6', '#059669', '#EF4444', '#3B82F6', '#EC4899', '#65A30D'],
-  light: ['#0891B2', '#B45309', '#7C3AED', '#047857', '#DC2626', '#2563EB', '#DB2777', '#4D7C0F'],
+  dark: ['#0891B2', '#D97706', '#8B5CF6', '#059669', '#EF4444', '#2563EB', '#EC4899', '#65A30D'],
+  light: ['#0891B2', '#B45309', '#7C3AED', '#047857', '#DC2626', '#1D4ED8', '#DB2777', '#4D7C0F'],
 };
 
-/** Single hue cyan ramp. Magnitude never gets a rainbow. */
-export const SEQUENTIAL = ['#155E75', '#0E7490', '#0891B2', '#06B6D4', '#22D3EE', '#67E8F9'] as const;
+/**
+ * Single hue cyan ramp, darkest first. Magnitude never gets a rainbow.
+ *
+ * The two surfaces get different six step ramps rather than one ramp read in
+ * two directions. On white the dark ramp's first two steps were 0.052 apart in
+ * lightness, under the 0.06 ordinal floor, so the light ramp starts a step
+ * deeper at #083344 and drops the lightest step, which had nowhere to sit
+ * against the surface anyway.
+ */
+export const SEQUENTIAL_BY_THEME: Record<ThemeName, readonly string[]> = {
+  dark: ['#155E75', '#0E7490', '#0891B2', '#06B6D4', '#22D3EE', '#67E8F9'],
+  light: ['#083344', '#155E75', '#0E7490', '#0891B2', '#06B6D4', '#22D3EE'],
+};
+
+/** The dark ramp, for anything that needs the canonical six. */
+export const SEQUENTIAL = SEQUENTIAL_BY_THEME.dark;
 
 /**
- * The same six colours, ordered low to high for the surface in use. On the dark
- * surface a high value should be the lighter one, because light against dark is
- * what advances; on the light surface that reverses, and running the ramp the
- * dark way round would make an empty cell the loudest thing on the chart.
+ * The ramp ordered low value to high value for the surface in use. On the dark
+ * surface a high value is the lighter one, because light against dark is what
+ * advances; on the light surface that reverses, and running the ramp the other
+ * way round would make an empty cell the loudest thing on the chart.
  */
 export function sequentialRamp(theme: ThemeName): string[] {
-  return theme === 'light' ? [...SEQUENTIAL].reverse() : [...SEQUENTIAL];
+  const ramp = SEQUENTIAL_BY_THEME[theme];
+  return theme === 'light' ? [...ramp].reverse() : [...ramp];
 }
 
-/** Cyan cool pole, amber warm pole, neutral midpoint, equal steps per arm. */
+/**
+ * Cyan cool pole, amber warm pole, neutral midpoint, validated one arm at a time
+ * from the midpoint outwards. The midpoint is deliberately below the contrast
+ * floor against its surface: a diverging scale's zero is meant to recede, and
+ * checking it as if it were a data colour tests the wrong thing.
+ *
+ * Defined, and not yet used: no chart on this page encodes a signed magnitude.
+ * It is here so that the first one does not have to invent a scale.
+ */
 export const DIVERGING: Record<ThemeName, readonly string[]> = {
-  dark: ['#155E75', '#0891B2', '#67E8F9', '#383835', '#FCD34D', '#D97706', '#92400E'],
-  light: ['#155E75', '#0891B2', '#67E8F9', '#F0EFEC', '#FCD34D', '#B45309', '#7C2D12'],
+  dark: ['#67E8F9', '#22D3EE', '#0891B2', '#383835', '#D97706', '#B45309', '#92400E'],
+  light: ['#155E75', '#0E7490', '#0891B2', '#F0EFEC', '#D97706', '#B45309', '#92400E'],
 };
 
 // Series index by entity, one based to match the token names in the brief.

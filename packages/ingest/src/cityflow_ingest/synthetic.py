@@ -33,11 +33,13 @@ import datetime as dt
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 import duckdb
 
 from cityflow_core.config import CityflowConfig, Service, SourceSpec
+from cityflow_core.paths import repo_root
 from cityflow_ingest.vintage import Vintage
 
 # Hour of day weights. Weekday and weekend are genuinely different shapes and
@@ -129,21 +131,25 @@ SPEED_MPH: tuple[float, ...] = (
     18.4,
 )
 
-# US federal holidays observed in the window the default config covers, plus
-# the two NYC days that visibly move taxi volume.
-HOLIDAYS_2024: tuple[dt.date, ...] = (
-    dt.date(2024, 1, 1),
-    dt.date(2024, 1, 15),
-    dt.date(2024, 2, 19),
-    dt.date(2024, 5, 27),
-    dt.date(2024, 6, 19),
-    dt.date(2024, 7, 4),
-    dt.date(2024, 9, 2),
-    dt.date(2024, 10, 14),
-    dt.date(2024, 11, 11),
-    dt.date(2024, 11, 28),
-    dt.date(2024, 12, 25),
-)
+
+# The holiday calendar is the dbt seed, read rather than restated. Two copies
+# of a holiday list is one copy too many: the generator would dip volume on a
+# day the warehouse did not think was a holiday, and the resulting bump in the
+# STL remainder would look like a finding.
+@cache
+def holidays(seed_path: Path | None = None) -> frozenset[dt.date]:
+    path = seed_path or (repo_root() / "transform" / "seeds" / "holiday.csv")
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"{path} is missing. The generator and dim_date share one holiday "
+            "list and neither has a fallback, because a fallback is how they "
+            "come to disagree."
+        )
+    with path.open(encoding="utf-8", newline="") as handle:
+        return frozenset(
+            dt.date.fromisoformat(row["holiday_date"]) for row in csv.DictReader(handle)
+        )
+
 
 # One planted level shift, so the changepoint detector has something real to
 # find and the annotation on the chart can be checked against a known date.
@@ -431,7 +437,7 @@ def install_zone_tables(
 
 def _daily_weight(day: dt.date, service: Service, start: dt.date) -> float:
     weight = DOW_WEIGHT[day.weekday()] * MONTH_FACTOR[day.month - 1]
-    if day in HOLIDAYS_2024:
+    if day in holidays():
         weight *= 0.62
     # A slow secular drift, so the STL trend component is not flat.
     weight *= 1.0 + 0.00035 * (day - start).days

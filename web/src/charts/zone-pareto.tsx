@@ -33,7 +33,7 @@ export function ZonePareto() {
     () => (catalog && engineReady ? buildZoneRankSql(catalog, filters) : null),
     [catalog, filters, engineReady],
   );
-  const query = useQuery<ZoneRankRow>(sql, 'zones by trips');
+  const query = useQuery<ZoneRankRow>(sql, 'Choropleth, trips by zone');
 
   const fallback = useMemo<ZoneRankRow[]>(
     () => bootstrap?.top_zones.map((z) => ({ zone_id: z.zone_id, zone: z.zone, borough: z.borough, trips: z.trips })) ?? [],

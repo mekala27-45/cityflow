@@ -60,7 +60,7 @@ export function ZoneChoropleth() {
     [catalog, filters, engineReady],
   );
 
-  const zones = useQuery<ZoneRankRow>(zoneSql, 'zones by trips');
+  const zones = useQuery<ZoneRankRow>(zoneSql, 'Choropleth, trips by zone');
   const exclusion = useQuery<ExclusionRow>(exclusionSql, 'unknown zone share');
 
   const fallback = useMemo<ZoneRankRow[]>(

@@ -105,39 +105,54 @@ interface TileProps {
 
 function Tile({ name, catalog, current, level, delta, spark, color, comparison }: TileProps) {
   const metric = catalog.get(name);
+  const formatted = applyFormat(current, metric.format);
   return (
+    // Stacked from the top rather than justified apart: the interval notes differ
+    // in length by four lines, and justify-between would slide the five headline
+    // numbers to five different heights across the row.
     <div
       data-testid={`kpi-${name}`}
-      className="flex flex-col justify-between rounded-lg border p-3"
+      className="flex flex-col rounded-lg border p-3"
       style={{ background: 'var(--panel)', borderColor: 'var(--border)' }}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--text-faint)' }}>
+      {/* Fixed height, because two of the five labels wrap to a second line and
+          the others do not, which would otherwise step the headline numbers down
+          a line in those two tiles. */}
+      <div className="flex min-h-[30px] items-start justify-between gap-2">
+        <span className="text-[11px] uppercase leading-tight tracking-wide" style={{ color: 'var(--text-faint)' }}>
           {TILE_LABEL[name] ?? name}
         </span>
         <Sparkline values={spark} color={color} label={`${TILE_LABEL[name] ?? name}, last ${spark.length} days`} />
       </div>
 
+      {/* Revenue over a three year window is fourteen characters wide. The size
+          steps down rather than the number being clipped or abbreviated: a total
+          the reader might quote belongs on the tile in full. */}
       <p
-        className="mt-2 text-2xl font-semibold tabular-nums"
+        className={`mt-2 mb-1 font-semibold tabular-nums ${
+          formatted.length > 13 ? 'text-lg' : formatted.length > 10 ? 'text-xl' : 'text-2xl'
+        }`}
         style={{ color: 'var(--text)' }}
         data-testid={`kpi-${name}-value`}
       >
-        {applyFormat(current, metric.format)}
+        {formatted}
       </p>
 
       {level ? (
-        <p className="mt-0.5 text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
+        <p className="pb-2 text-[11px] tabular-nums" style={{ color: 'var(--text-muted)' }}>
           {applyFormat(level.lower, metric.format)} to {applyFormat(level.upper, metric.format)}{' '}
           <span style={{ color: 'var(--text-faint)' }}>({level.method})</span>
         </p>
       ) : (
-        <p className="mt-0.5 text-[11px]" style={{ color: 'var(--text-faint)' }}>
-          Level interval: {intervalNote(metric)}.
+        // No interval, and the catalog says why. The sentence is the metric
+        // layer's, not this component's: whether a ratio of two totals can carry
+        // an interval is a property of the metric, not of the tile.
+        <p className="pb-2 text-[11px] leading-snug" style={{ color: 'var(--text-faint)' }}>
+          {intervalNote(metric)}
         </p>
       )}
 
-      <div className="mt-2 border-t pt-2" style={{ borderColor: 'var(--border)' }}>
+      <div className="mt-auto border-t pt-2" style={{ borderColor: 'var(--border)' }}>
         {delta ? (
           <>
             <p className="text-xs tabular-nums" style={{ color: 'var(--text)' }}>
@@ -170,8 +185,8 @@ export function KpiRow() {
     [catalog, filters, engineReady],
   );
 
-  const windowQuery = useQuery<WindowRow>(windowSql, 'kpi window totals');
-  const dailyQuery = useQuery<DailyRow>(dailySql, 'kpi daily series');
+  const windowQuery = useQuery<WindowRow>(windowSql, 'KPI tiles, window totals');
+  const dailyQuery = useQuery<DailyRow>(dailySql, 'KPI tiles, daily series');
 
   // Before the engine answers, the tiles run on the precomputed bootstrap, which
   // covers the default window only. The fallback is labelled in the panel intro.
@@ -188,18 +203,36 @@ export function KpiRow() {
   const currentDaily = useMemo(() => daily.filter((r) => r.period === 'current'), [daily]);
   const priorDaily = useMemo(() => daily.filter((r) => r.period === 'prior'), [daily]);
 
-  // The source starts in January 2024, so the default window (the whole year)
-  // has no calendar before it to compare against. Rather than print an arrow
-  // with nothing behind it, the comparison falls back to the second half of the
-  // window against the first, which is a different question and is labelled as
-  // one on every tile.
-  const splitComparison = priorDaily.length < 2 && currentDaily.length >= 8;
-  const half = Math.floor(currentDaily.length / 2);
-  const later = splitComparison ? currentDaily.slice(half) : currentDaily;
-  const earlier = splitComparison ? currentDaily.slice(0, half) : priorDaily;
-  const comparison = splitComparison
-    ? `later ${later.length} days against the first ${earlier.length}`
-    : `against the prior ${priorDays} days`;
+  // Three comparisons, in order of how well they read, and the tile says which
+  // one it made. A window with a full equal length calendar before it inside the
+  // source gets that. A window of two years or more has no calendar before it
+  // but contains its own: the last 365 days against the 365 before them, which
+  // is the year over year comparison and holds the season constant. Anything
+  // shorter falls back to halves, which does not hold the season constant and is
+  // labelled so nobody reads it as though it did.
+  const YEAR = 365;
+  const { later, earlier, comparison } = useMemo(() => {
+    if (priorDaily.length >= 2) {
+      return {
+        later: currentDaily,
+        earlier: priorDaily,
+        comparison: `against the prior ${priorDays} days`,
+      };
+    }
+    if (currentDaily.length >= 2 * YEAR) {
+      return {
+        later: currentDaily.slice(-YEAR),
+        earlier: currentDaily.slice(-2 * YEAR, -YEAR),
+        comparison: 'year over year, last 365 days against the 365 before',
+      };
+    }
+    const half = Math.floor(currentDaily.length / 2);
+    return {
+      later: currentDaily.slice(half),
+      earlier: currentDaily.slice(0, half),
+      comparison: `later ${currentDaily.length - half} days against the first ${half}, seasons not matched`,
+    };
+  }, [currentDaily, priorDaily, priorDays]);
 
   const tiles = TILE_METRICS.map((name) => {
     const series = currentDaily.map((r) => Number(r[name]));

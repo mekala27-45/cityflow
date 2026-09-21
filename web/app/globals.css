@@ -7,6 +7,9 @@
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
+/* The palette, validated by scripts/validate_palette.js. Charts read these values
+   from src/lib/palette.ts, which is the copy the JavaScript uses; the tokens here
+   are the same colours for anything styled in CSS, and the two change together. */
 :root {
   color-scheme: dark;
   --surface: #0b0f14;
@@ -25,7 +28,7 @@
   --series-3: #8b5cf6;
   --series-4: #059669;
   --series-5: #ef4444;
-  --series-6: #3b82f6;
+  --series-6: #2563eb;
   --series-7: #ec4899;
   --series-8: #65a30d;
 
@@ -63,9 +66,16 @@
     --series-3: #7c3aed;
     --series-4: #047857;
     --series-5: #dc2626;
-    --series-6: #2563eb;
+    --series-6: #1d4ed8;
     --series-7: #db2777;
     --series-8: #4d7c0f;
+
+    --seq-1: #083344;
+    --seq-2: #155e75;
+    --seq-3: #0e7490;
+    --seq-4: #0891b2;
+    --seq-5: #06b6d4;
+    --seq-6: #22d3ee;
 
     --div-mid: #f0efec;
 
@@ -94,9 +104,16 @@
   --series-3: #7c3aed;
   --series-4: #047857;
   --series-5: #dc2626;
-  --series-6: #2563eb;
+  --series-6: #1d4ed8;
   --series-7: #db2777;
   --series-8: #4d7c0f;
+
+  --seq-1: #083344;
+  --seq-2: #155e75;
+  --seq-3: #0e7490;
+  --seq-4: #0891b2;
+  --seq-5: #06b6d4;
+  --seq-6: #22d3ee;
 
   --div-mid: #f0efec;
 

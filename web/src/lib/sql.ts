@@ -15,16 +15,31 @@ export const ALL_SERVICES = ['fhvhv', 'yellow', 'green'] as const;
 export const ALL_DAY_TYPES = ['weekday', 'weekend'] as const;
 export const ALL_BOROUGHS = ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', 'EWR'] as const;
 
+/**
+ * The window the app opens on before manifest.json lands. It is a fallback, not
+ * the truth: AppProvider replaces it with the published window as soon as the
+ * manifest arrives, so a regenerated warehouse moves the dashboard without a
+ * code change. These dates match the window shipped at the time of writing.
+ */
 export const DEFAULT_FILTERS: Filters = {
-  from: '2024-01-01',
+  from: '2021-07-01',
   to: '2024-12-31',
   services: [...ALL_SERVICES],
   dayTypes: [...ALL_DAY_TYPES],
   boroughs: [],
 };
 
-/** The TLC's own unknown location codes. Real volume, no geometry, never mapped. */
-export const UNKNOWN_ZONE_IDS = [264, 265] as const;
+/**
+ * The manifest publishes the first and last source period, which are months. The
+ * daily aggregate runs to the end of the last of them, so the filter window has
+ * to be widened to that month's end or the last month is silently clipped.
+ */
+export function windowFromManifest(window: { start: string; end: string }): { from: string; to: string } {
+  const lastMonth = new Date(`${window.end.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(lastMonth.getTime())) return { from: DEFAULT_FILTERS.from, to: DEFAULT_FILTERS.to };
+  const endOfMonth = new Date(Date.UTC(lastMonth.getUTCFullYear(), lastMonth.getUTCMonth() + 1, 0));
+  return { from: window.start.slice(0, 10), to: endOfMonth.toISOString().slice(0, 10) };
+}
 
 function quoteList(values: readonly string[]): string {
   return values.map((v) => `'${v.replace(/'/g, "''")}'`).join(', ');
@@ -94,18 +109,35 @@ export function zoneHourAgg(
 }
 
 /**
- * agg_zone_hour without the zone join, for the hour of day profile. The join
- * costs a scan of pu_zone_id across every row and buys nothing when the caller
- * only needs the shape of a day: any chart using this ignores the borough
- * filter, and says so.
+ * day_type as a predicate on day_of_week, for relations that carry the day of
+ * week and not the label. Verified against dim_date: day 0 is Sunday and day 6
+ * is Saturday, day_type is a pure function of day_of_week there, and a holiday
+ * keeps its weekday classification rather than being folded into the weekend.
  */
-export function hourProfileAgg(filters: Filters): string {
+export function dayTypeFromDowPredicate(filters: Filters, column = 'day_of_week'): string {
+  if (filters.dayTypes.length === 0 || filters.dayTypes.length === ALL_DAY_TYPES.length) return 'true';
+  const weekend = `${column} in (0, 6)`;
+  return filters.dayTypes.includes('weekend') ? weekend : `not (${weekend})`;
+}
+
+/**
+ * agg_hour_of_week, the measured hour by day of week grid. Borough is a column
+ * here rather than a join, so all four filters reach it directly.
+ */
+export function hourOfWeekAgg(
+  filters: Filters,
+  options: { columns?: readonly string[] } = {},
+): string {
+  // Parquet is columnar and DuckDB reads only the chunks a projection touches,
+  // so naming the columns is the difference between a 60 kB read and a 4 MB one.
+  const projected = (options.columns ?? ['day_of_week', 'day_name', 'hour', 'trips']).join(', ');
   return `agg as (
-    select hour, day_type, trips
-    from 'agg_zone_hour.parquet'
+    select ${projected}
+    from 'agg_hour_of_week.parquet'
     where ${monthWindow(filters, 'month')}
       and ${servicePredicate(filters)}
-      and ${dayTypePredicate(filters)}
+      and ${dayTypeFromDowPredicate(filters)}
+      and ${boroughPredicate(filters)}
   )`;
 }
 
@@ -116,16 +148,6 @@ export function monthWindow(filters: Filters, column = 'month'): string {
 
 export function dateWindow(filters: Filters, column = 'date_day'): string {
   return `${column} between ${dateLiteral(filters.from)} and ${dateLiteral(filters.to)}`;
-}
-
-export function filtersKey(filters: Filters): string {
-  return [
-    filters.from,
-    filters.to,
-    [...filters.services].sort().join('+'),
-    [...filters.dayTypes].sort().join('+'),
-    [...filters.boroughs].sort().join('+'),
-  ].join('|');
 }
 
 /** Days in the window, used to size the comparison period. */

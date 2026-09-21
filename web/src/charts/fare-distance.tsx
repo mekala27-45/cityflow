@@ -54,7 +54,7 @@ export function FareDistance() {
   const service = chosen && filters.services.includes(chosen) ? chosen : preferredService(filters);
 
   const sql = useMemo(() => (engineReady ? buildSql(service) : null), [service, engineReady]);
-  const query = useQuery<Row>(sql, 'fare against distance hexbin');
+  const query = useQuery<Row>(sql, 'Fare against distance hexbin');
   const rows = useMemo(() => query.rows ?? [], [query.rows]);
 
   const cells = useMemo(

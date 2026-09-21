@@ -1,0 +1,92 @@
+name: refresh
+
+# The TLC publishes a new month around the middle of the following month. This
+# rebuilds the warehouse from the real files, re-derives every published figure
+# and opens a pull request carrying the updated artifacts and a diff of what
+# moved. A dashboard that keeps itself current is a dashboard that stays alive,
+# and a diff of every published number is the only honest way to update one.
+
+on:
+  schedule:
+    - cron: "0 7 20 * *"
+  workflow_dispatch:
+    inputs:
+      backend:
+        description: "tlc or synthetic"
+        default: tlc
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.7"
+          enable-cache: true
+      - run: uv sync --all-extras
+
+      - name: keep the current figures for the diff
+        run: cp web/public/data/manifest.json /tmp/manifest.before.json
+
+      - name: rebuild the warehouse
+        env:
+          CITYFLOW_BACKEND: ${{ inputs.backend || 'tlc' }}
+        run: |
+          set -euo pipefail
+          uv run cityflow zones
+          uv run cityflow ingest
+          uv run dbt seed --project-dir transform --profiles-dir transform
+          uv run dbt build --project-dir transform --profiles-dir transform
+          uv run cityflow publish
+          uv run cityflow manifest
+          uv run cityflow reconcile
+
+      - name: re-render every document from the new figures
+        run: uv run python scripts/check_published_numbers.py --write
+
+      - name: what moved
+        id: diff
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY' > /tmp/figure-diff.md
+          import json, pathlib
+          before = json.loads(pathlib.Path("/tmp/manifest.before.json").read_text())["claims"]
+          after = json.loads(pathlib.Path("web/public/data/manifest.json").read_text())["claims"]
+          rows = []
+          for key in sorted(set(before) | set(after)):
+              old, new = before.get(key), after.get(key)
+              if old == new:
+                  continue
+              try:
+                  delta = f"{(float(new) - float(old)) / float(old) * 100:+.2f}%"
+              except (TypeError, ValueError, ZeroDivisionError):
+                  delta = "n/a"
+              rows.append(f"| `{key}` | {old} | {new} | {delta} |")
+          print("## Published figures that moved\n")
+          if rows:
+              print("| claim | before | after | change |")
+              print("| --- | --- | --- | --- |")
+              print("\n".join(rows))
+          else:
+              print("No published figure changed.")
+          PY
+          cat /tmp/figure-diff.md
+
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: refresh/monthly
+          title: "chore: refresh the warehouse and re-derive every figure"
+          body-path: /tmp/figure-diff.md
+          commit-message: "chore: monthly refresh of the shipped layer"
+          add-paths: |
+            web/public/data/**
+            README.md
+            RESULTS.md
+            docs/**
