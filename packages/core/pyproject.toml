@@ -1,6 +1,6 @@
 [project]
 name = "cityflow-core"
-version = "0.1.0"
+version = "0.1.1"
 description = "Configuration, schemas and the DuckDB session factory shared across cityflow."
 requires-python = ">=3.12"
 dependencies = [

@@ -1,6 +1,6 @@
 [project]
 name = "cityflow-ingest"
-version = "0.1.0"
+version = "0.1.1"
 description = "Source registry, per-vintage schema mapping, quarantine rules and the seeded generator."
 requires-python = ">=3.12"
 dependencies = [

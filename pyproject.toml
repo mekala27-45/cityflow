@@ -1,6 +1,6 @@
 [project]
 name = "cityflow"
-version = "0.1.0"
+version = "0.1.1"
 description = "An analytics warehouse and browser-side dashboard over NYC taxi and for-hire vehicle trip records."
 readme = "README.md"
 requires-python = ">=3.12"

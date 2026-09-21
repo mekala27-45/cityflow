@@ -2,7 +2,7 @@
 # audit tables. Everything from the staging views down is owned here, so the two
 # halves meet at exactly one place: models/staging/_sources.yml.
 name: cityflow
-version: "0.1.0"
+version: "0.1.1"
 config-version: 2
 profile: cityflow
 

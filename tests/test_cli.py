@@ -49,10 +49,16 @@ def scratch_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Pa
     repo_root.cache_clear()
 
 
-def test_version_prints_the_version(scratch_root: Path) -> None:
+def test_version_agrees_with_the_installed_package(scratch_root: Path) -> None:
+    """Not a literal. A test that pins the version string is a third place the
+    number lives, and it fails on every bump for no reason anybody learns
+    from. What is worth asserting is that the command and the package agree.
+    """
+    from importlib.metadata import version as installed_version
+
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0, result.output
-    assert "0.1.0" in result.output
+    assert installed_version("cityflow") in result.output
 
 
 def test_doctor_fails_on_a_machine_that_cannot_build(scratch_root: Path) -> None:

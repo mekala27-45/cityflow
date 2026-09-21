@@ -1,6 +1,6 @@
 [project]
 name = "cityflow-stats"
-version = "0.1.0"
+version = "0.1.1"
 description = "Wilson intervals, STL decomposition, PELT changepoints and Benjamini-Hochberg correction."
 requires-python = ">=3.12"
 dependencies = [

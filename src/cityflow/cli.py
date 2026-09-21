@@ -344,8 +344,17 @@ def doctor() -> None:
 
 @app.command()
 def version() -> None:
-    """Print the version."""
-    console.print("cityflow 0.1.0")
+    """Print the version.
+
+    Read out of the installed package rather than written here. A version
+    printed as a literal is a second place the number lives, and the second
+    place is the one that goes stale: the tag says one thing, the command
+    says another, and nobody notices until somebody reports a bug against a
+    release that never existed.
+    """
+    from importlib.metadata import version as installed_version
+
+    console.print(f"cityflow {installed_version('cityflow')}")
 
 
 def main() -> int:

@@ -1,6 +1,6 @@
 [project]
 name = "cityflow-publish"
-version = "0.1.0"
+version = "0.1.1"
 description = "Aggregate builders, the parquet writer and the shipped size budget."
 requires-python = ">=3.12"
 dependencies = [
