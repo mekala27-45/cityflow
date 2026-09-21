@@ -32,6 +32,7 @@ from pyproj import Transformer
 from shapely.geometry import Point, mapping, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform
+from shapely.ops import unary_union
 
 # The projection the TLC publishes in, and the one the web expects.
 SOURCE_CRS = "EPSG:2263"
@@ -49,6 +50,23 @@ COORDINATE_PRECISION = 6
 # The TLC's codes for a trip whose zone could not be determined.
 UNKNOWN_ZONE_IDS = (264, 265)
 
+# The shapefile holds 263 polygon records covering 260 distinct zone ids. Two
+# zones are split across several records (Corona is two polygons, the three
+# harbour islands are three), and three ids that the trip records can and do
+# reference have no polygon at all because the mapping folded them into their
+# neighbours. Left alone, the duplicates fan out a join on zone id and the
+# absent ids vanish from an inner one, and both failures are silent.
+#
+# So the polygons are dissolved by zone id, and the three geometryless ids are
+# emitted as rows carrying their name and borough with has_geometry false. They
+# are real zones with no shape, which is a different thing from the unknown
+# codes above, and the dimension says which is which.
+GEOMETRYLESS_ZONE_IDS: dict[int, tuple[str, str]] = {
+    57: ("Corona", "Queens"),
+    104: ("Governor's Island/Ellis Island/Liberty Island", "Manhattan"),
+    105: ("Governor's Island/Ellis Island/Liberty Island", "Manhattan"),
+}
+
 # The three airport zones, which the official lookup separates out because they
 # carry flat fares and because airport share is a metric people ask for.
 AIRPORT_ZONE_IDS = {1: "EWR", 132: "Airports", 138: "Airports"}
@@ -64,6 +82,8 @@ class Zone:
     service_zone: str
     is_unknown: bool
     is_airport: bool
+    has_geometry: bool
+    part_count: int
     centroid_lon: float | None
     centroid_lat: float | None
     area_sq_mi: float | None
@@ -134,36 +154,58 @@ def prepare_zones(
     reader = shapefile.Reader(str(shapefile_stem), encoding="latin-1")
     field_names = [f[0] for f in reader.fields[1:]]
 
-    features: list[dict[str, Any]] = []
-    zones: list[Zone] = []
+    # Gather every polygon record under its zone id first. The shapefile holds
+    # more records than zones and a per record loop would emit duplicate rows,
+    # which fan out any join on zone id and inflate every count downstream.
+    parts: dict[int, list[BaseGeometry]] = {}
+    raw_records = 0
+    attributes: dict[int, tuple[str, str]] = {}
     raw_vertices = 0
-    kept_vertices = 0
 
     for shape_record in reader.iterShapeRecords():
         record = dict(zip(field_names, list(shape_record.record), strict=True))
         zone_id = int(record["LocationID"])
-        borough = str(record["borough"]).strip()
-        name = str(record["zone"]).strip()
-
+        attributes.setdefault(
+            zone_id,
+            (str(record["zone"]).strip(), str(record["borough"]).strip()),
+        )
         projected = shape(shape_record.shape.__geo_interface__)
         raw_vertices += _count_vertices(projected)
+        parts.setdefault(zone_id, []).append(projected)
+        raw_records += 1
 
-        simplified = projected.simplify(tolerance_feet, preserve_topology=True)
+    features: list[dict[str, Any]] = []
+    zones: list[Zone] = []
+    kept_vertices = 0
+    dissolved_zones = 0
+
+    for zone_id in sorted(parts):
+        name, borough = attributes[zone_id]
+        pieces = parts[zone_id]
+        if len(pieces) > 1:
+            dissolved_zones += 1
+        merged = unary_union(pieces)
+
+        simplified = merged.simplify(tolerance_feet, preserve_topology=True)
         if simplified.is_empty:
             # Simplification can empty a sliver. Keep the original rather than
             # losing the zone, and let the size budget complain if it matters.
-            simplified = projected
+            simplified = merged
         kept_vertices += _count_vertices(simplified)
 
         # Area in the source projection is square feet, which is exact here.
         # 27,878,400 square feet to the square mile.
-        area_sq_mi = projected.area / 27_878_400.0
+        area_sq_mi = merged.area / 27_878_400.0
 
         wgs84 = _to_wgs84(simplified)
-        # The centroid is taken on the full polygon, not the simplified one, so
-        # the flow map arcs land where the zone actually is rather than where
-        # the 150 foot tolerance left it.
-        centroid = _to_wgs84(projected.centroid)
+        # The centroid is taken on the full geometry, not the simplified one,
+        # so the flow map arcs land where the zone actually is rather than
+        # where the 150 foot tolerance left it. For a dissolved multi part
+        # zone this is the area weighted centroid of the parts, which for the
+        # three harbour islands puts the point in the water between them. That
+        # is the honest answer for a zone made of three islands, and the flow
+        # map draws from it rather than from an arbitrarily chosen island.
+        centroid = _to_wgs84(merged.centroid)
         if not isinstance(centroid, Point):  # pragma: no cover
             raise TypeError(f"Zone {zone_id} centroid is not a point")
 
@@ -175,13 +217,14 @@ def prepare_zones(
                 service_zone=_service_zone(zone_id, borough),
                 is_unknown=False,
                 is_airport=zone_id in AIRPORT_ZONE_IDS,
+                has_geometry=True,
+                part_count=len(pieces),
                 centroid_lon=round(centroid.x, COORDINATE_PRECISION),
                 centroid_lat=round(centroid.y, COORDINATE_PRECISION),
                 area_sq_mi=round(area_sq_mi, 4),
             )
         )
 
-        geometry = _round_coordinates(mapping(wgs84))
         features.append(
             {
                 "type": "Feature",
@@ -192,12 +235,33 @@ def prepare_zones(
                     "borough": borough,
                     "service_zone": _service_zone(zone_id, borough),
                 },
-                "geometry": geometry,
+                "geometry": _round_coordinates(mapping(wgs84)),
             }
         )
 
-    # The two unknown codes, which have no polygon and must never be silently
-    # dropped by a join.
+    # Zone ids the trip records reference that the shapefile has no polygon
+    # for, because the mapping folded them into a neighbour. Real zones with no
+    # shape, which is a different thing from the unknown codes below.
+    for zone_id, (name, borough) in sorted(GEOMETRYLESS_ZONE_IDS.items()):
+        if zone_id in parts:  # pragma: no cover
+            continue
+        zones.append(
+            Zone(
+                zone_id=zone_id,
+                zone=name,
+                borough=borough,
+                service_zone=_service_zone(zone_id, borough),
+                is_unknown=False,
+                is_airport=zone_id in AIRPORT_ZONE_IDS,
+                has_geometry=False,
+                part_count=0,
+                centroid_lon=None,
+                centroid_lat=None,
+                area_sq_mi=None,
+            )
+        )
+
+    # The two unknown codes, which must never be silently dropped by a join.
     for zone_id in UNKNOWN_ZONE_IDS:
         zones.append(
             Zone(
@@ -207,6 +271,8 @@ def prepare_zones(
                 service_zone="N/A",
                 is_unknown=True,
                 is_airport=False,
+                has_geometry=False,
+                part_count=0,
                 centroid_lon=None,
                 centroid_lat=None,
                 area_sq_mi=None,
@@ -222,7 +288,11 @@ def prepare_zones(
     geojson_out.write_text(json.dumps(collection, separators=(",", ":")), encoding="utf-8")
 
     stats = {
+        "polygon_records_read": float(raw_records),
         "zones_with_geometry": float(len(features)),
+        "zones_dissolved_from_multiple_parts": float(dissolved_zones),
+        "zones_without_geometry": float(len(GEOMETRYLESS_ZONE_IDS)),
+        "unknown_zone_codes": float(len(UNKNOWN_ZONE_IDS)),
         "zones_total": float(len(zones)),
         "raw_vertices": float(raw_vertices),
         "kept_vertices": float(kept_vertices),

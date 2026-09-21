@@ -1,0 +1,354 @@
+version: 2
+
+models:
+  - name: dim_zone
+    description: >
+      One row per TLC taxi zone, 262 of them. Zones 264 and 265 are the TLC's
+      unknown codes: they have no geometry, they carry real trip volume, and
+      has_geometry is what keeps them out of anything drawn on a map without
+      also dropping them from the totals.
+    columns:
+      - name: zone_id
+        data_tests:
+          - unique
+          - not_null
+      - name: borough
+        data_tests:
+          - not_null
+      - name: service_zone
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["Yellow Zone", "Boro Zone", "Airports", "EWR", "N/A"]
+      - name: is_unknown
+        data_tests:
+          - not_null
+      - name: is_airport
+        description: True for zones 1 (Newark), 132 (JFK) and 138 (LaGuardia).
+        data_tests:
+          - not_null
+      - name: has_geometry
+        description: >
+          False exactly for the unknown zones. Tested conditionally rather than
+          globally, because the rule being asserted is about those two rows.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["false"]
+                quote: false
+              config:
+                where: "is_unknown"
+      - name: centroid_lat
+        data_tests:
+          - not_null:
+              config:
+                where: "has_geometry"
+      - name: centroid_lon
+        data_tests:
+          - not_null:
+              config:
+                where: "has_geometry"
+
+  - name: dim_date
+    description: >
+      One row per day in the build window, generated from the fact so it cannot
+      fall behind it. day_of_week is 0 for Sunday, matching DuckDB's dayofweek,
+      so nobody has to convert between two conventions.
+    columns:
+      - name: date_day
+        data_tests:
+          - unique
+          - not_null
+      - name: year
+        data_tests:
+          - not_null
+      - name: month_name
+        data_tests:
+          - not_null
+      - name: day_of_week
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3, 4, 5, 6]
+                quote: false
+      - name: is_weekend
+        data_tests:
+          - not_null
+      - name: is_holiday
+        data_tests:
+          - not_null
+      - name: holiday_name
+        description: Null on an ordinary day, which is why the test is conditional.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_holiday"
+      - name: day_type
+        description: >
+          Weekday or weekend only. A holiday is not a third day type: it is a
+          flag, because a holiday that falls on a Tuesday is still a Tuesday for
+          anything comparing like with like.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["weekday", "weekend"]
+
+  - name: dim_hour
+    description: Twenty four rows. The daypart bands are the ones the peak surcharge uses.
+    columns:
+      - name: hour
+        data_tests:
+          - unique
+          - not_null
+      - name: hour_label
+        data_tests:
+          - not_null
+      - name: daypart
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["overnight", "morning peak", "midday", "evening peak", "evening"]
+      - name: is_peak
+        data_tests:
+          - not_null
+
+  - name: dim_service
+    description: The three services the warehouse covers, written out rather than discovered.
+    columns:
+      - name: service
+        data_tests:
+          - unique
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["yellow", "green", "fhvhv"]
+      - name: service_label
+        data_tests:
+          - not_null
+      - name: service_description
+        data_tests:
+          - not_null
+
+  - name: dim_ratecode
+    description: >
+      The TLC rate codes 1 to 6 and the unknown code 99, plus member 0 for not
+      applicable. For hire vehicle trips carry no rate code at all, so without
+      an explicit member for that they would join to nothing and vanish from
+      every rate code breakdown while still counting in the total. is_flat_rate
+      marks the two negotiated airport rates, JFK and Newark, where the fare is
+      fixed and the meter is not the story.
+    columns:
+      - name: ratecode_id
+        data_tests:
+          - unique
+          - not_null
+      - name: ratecode_label
+        data_tests:
+          - not_null
+      - name: is_flat_rate
+        data_tests:
+          - not_null
+
+  - name: fct_trip
+    description: >
+      One row per trip, incremental by source period. Every measure the
+      dashboard shows starts here.
+    columns:
+      - name: trip_id
+        data_tests:
+          - unique
+          - not_null
+      - name: service
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_service')
+                field: service
+      - name: pu_zone_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_zone')
+                field: zone_id
+      - name: do_zone_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_zone')
+                field: zone_id
+      - name: pickup_date
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: pickup_hour
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_hour')
+                field: hour
+      - name: ratecode_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_ratecode')
+                field: ratecode_id
+      - name: payment_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - card
+                  - cash
+                  - no_charge
+                  - dispute
+                  - unknown
+                  - voided
+                  - flex_fare
+                  - app
+      - name: tip_is_observable
+        data_tests:
+          - not_null
+      - name: tip_pct
+        description: >
+          Tip as a share of fare, and null wherever the payment channel cannot
+          see a tip. Never zero for cash. The conditional not_null test is the
+          other half of that rule: where a tip can be seen, a share has to exist,
+          because the ingest has already removed every non positive fare.
+        data_tests:
+          - not_null:
+              config:
+                where: "tip_is_observable"
+      - name: fare_amount
+        data_tests:
+          - not_null
+      - name: duration_s
+        data_tests:
+          - not_null
+      - name: trip_distance
+        data_tests:
+          - not_null
+      - name: surcharge_total
+        description: Sum of the six surcharge columns, with a column that did not yet exist counted as zero.
+        data_tests:
+          - not_null
+      - name: pu_is_unknown
+        data_tests:
+          - not_null
+      - name: do_is_unknown
+        data_tests:
+          - not_null
+      - name: has_known_geography
+        data_tests:
+          - not_null
+      - name: is_airport_trip
+        data_tests:
+          - not_null
+
+  - name: mart_quarantine
+    description: >
+      What the ingest removed, by rule, service and month, as a share of the
+      rows the source held. The share is the comparable number.
+    columns:
+      - name: rule
+        data_tests:
+          - not_null
+      - name: service
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_service')
+                field: service
+      - name: source_period
+        data_tests:
+          - not_null
+      - name: rows
+        data_tests:
+          - not_null
+      - name: share_of_source
+        data_tests:
+          - not_null
+
+  - name: mart_source_freshness
+    description: >
+      One row per service and source period, with what was read and when.
+      has_gap marks a month whose predecessor is missing, so the panel can break
+      the line instead of drawing a smooth slope across a hole in the source.
+    columns:
+      - name: service
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_service')
+                field: service
+      - name: source_period
+        data_tests:
+          - not_null
+      - name: source_rows
+        data_tests:
+          - not_null
+      - name: clean_rows
+        data_tests:
+          - not_null
+      - name: ingested_at
+        data_tests:
+          - not_null
+      - name: has_gap
+        data_tests:
+          - not_null
+
+  - name: mart_null_rates
+    description: >
+      Null share per watched column, service and month. A null share of exactly
+      1.0 followed by a drop is a column being introduced, not a data quality
+      problem: congestion_surcharge appears in 2019-02, airport_fee in 2022-01,
+      cbd_congestion_fee in 2025-01, and passenger_count and ratecode_id are
+      absent from the high volume for hire vehicle schema entirely. What should
+      raise an alarm is a share that moves in the middle of a service's history,
+      because that is a source that changed shape without announcing it.
+    columns:
+      - name: service
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_service')
+                field: service
+      - name: source_period
+        data_tests:
+          - not_null
+      - name: column_name
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - congestion_surcharge
+                  - airport_fee
+                  - cbd_congestion_fee
+                  - passenger_count
+                  - ratecode_id
+      - name: rows
+        data_tests:
+          - not_null
+      - name: null_rows
+        data_tests:
+          - not_null
+      - name: null_share
+        data_tests:
+          - not_null

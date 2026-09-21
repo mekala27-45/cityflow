@@ -1,0 +1,9 @@
+version: 2
+
+models:
+  - name: int_trip_geography
+    description: >
+      Trips with both zone endpoints resolved against the zone dimension. Kept
+      separate from fct_trip because it holds one policy, stated once: an
+      unresolvable zone id is treated exactly like the TLC's own unknown codes.
+      Ephemeral, so it costs no storage and no second pass over the trips.

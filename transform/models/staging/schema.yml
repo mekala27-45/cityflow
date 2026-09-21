@@ -1,0 +1,150 @@
+version: 2
+
+models:
+  - name: stg_trips
+    description: >
+      One row per clean trip with the four derivations every consumer needs.
+      This is the row count the whole project is measured against: fct_trip has
+      to match it exactly.
+    columns:
+      - name: trip_id
+        data_tests:
+          - unique
+          - not_null
+      - name: service
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["yellow", "green", "fhvhv"]
+      - name: payment_type
+        description: >
+          Normalized from the TLC's numeric code. app is the high volume for
+          hire vehicle case, which carries no code at all because every one of
+          those trips is paid in the app.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values:
+                  - card
+                  - cash
+                  - no_charge
+                  - dispute
+                  - unknown
+                  - voided
+                  - flex_fare
+                  - app
+      - name: tip_is_observable
+        description: True only for card and app. Read this before reading tip_amount.
+        data_tests:
+          - not_null
+      - name: source_period
+        description: The month of the published file, which is the incremental partition.
+        data_tests:
+          - not_null
+      - name: pickup_ts
+        data_tests:
+          - not_null
+      - name: pickup_date
+        data_tests:
+          - not_null
+      - name: pickup_hour
+        data_tests:
+          - not_null
+      - name: pu_zone_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_zones')
+                field: zone_id
+      - name: do_zone_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_zones')
+                field: zone_id
+      - name: fare_amount
+        description: >
+          Always above zero. The ingest quarantines a non positive fare, which is
+          why tip_pct can divide by it for every observable trip.
+        data_tests:
+          - not_null
+      - name: duration_s
+        data_tests:
+          - not_null
+      - name: implied_speed_mph
+        description: Null only where duration is zero, which the ingest already removes.
+        data_tests:
+          - not_null
+
+  - name: stg_zones
+    description: >
+      One row per zone, collapsed from the polygon grain of the seed. 262 zones,
+      including the two unknown codes the TLC publishes.
+    columns:
+      - name: zone_id
+        data_tests:
+          - unique
+          - not_null
+      - name: borough
+        data_tests:
+          - not_null
+      - name: service_zone
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["Yellow Zone", "Boro Zone", "Airports", "EWR", "N/A"]
+      - name: is_unknown
+        data_tests:
+          - not_null
+      - name: is_airport
+        data_tests:
+          - not_null
+
+  - name: stg_quarantine
+    description: Rows the ingest removed, by rule and by source period.
+    columns:
+      - name: rule
+        data_tests:
+          - not_null
+      - name: service
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["yellow", "green", "fhvhv"]
+      - name: source_period
+        data_tests:
+          - not_null
+      - name: rows
+        data_tests:
+          - not_null
+      - name: source_rows
+        data_tests:
+          - not_null
+
+  - name: stg_source_audit
+    description: What the ingest actually read, per service and source period.
+    columns:
+      - name: service
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["yellow", "green", "fhvhv"]
+      - name: source_period
+        data_tests:
+          - not_null
+      - name: source_rows
+        data_tests:
+          - not_null
+      - name: clean_rows
+        data_tests:
+          - not_null
+      - name: ingested_at
+        data_tests:
+          - not_null

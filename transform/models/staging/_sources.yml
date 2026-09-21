@@ -1,0 +1,41 @@
+version: 2
+
+sources:
+  - name: warehouse
+    schema: main
+    description: >
+      The tables the Python ingest writes and dbt only reads. The ingest owns
+      the vintage mapping, the normalizer and the quarantine rules, so by the
+      time a row reaches stg_trip it has already been judged. Nothing below
+      this file may reach around it into raw files.
+    tables:
+      - name: stg_trip
+        description: >
+          One row per trip that survived quarantine, normalized across eleven
+          published schema vintages. The natural key is trip_id, assigned by
+          the ingest, because the TLC publishes no trip identifier.
+        columns:
+          - name: trip_id
+            description: Ingest assigned surrogate key. Stable within a build, not across builds.
+            data_tests:
+              - unique
+              - not_null
+          - name: tip_is_observable
+            description: >
+              True only where the payment channel records a tip, which is card
+              and in app payment. Everything downstream that touches tip_amount
+              has to read this column first.
+            data_tests:
+              - not_null
+
+      - name: quarantine_log
+        description: >
+          Rows removed, counted by rule and by source period. A rule that
+          suddenly removes ten times its usual share is the first sign that an
+          upstream schema moved.
+
+      - name: source_audit
+        description: >
+          One row per service per source period per ingest, with the row counts
+          and byte counts the ingest saw. This is the only record of what was
+          actually read, as opposed to what was expected.

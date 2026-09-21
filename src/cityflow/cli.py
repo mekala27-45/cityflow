@@ -10,7 +10,6 @@ from __future__ import annotations
 import csv
 import json
 import sys
-from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -37,9 +36,7 @@ def _config(backend: str | None) -> CityflowConfig:
 
 @app.command()
 def zones(
-    tolerance: Annotated[
-        float, typer.Option(help="Simplification tolerance in feet.")
-    ] = 150.0,
+    tolerance: Annotated[float, typer.Option(help="Simplification tolerance in feet.")] = 150.0,
 ) -> None:
     """Build the zone GeoJSON and dim_zone reference from the TLC shapefile."""
     from cityflow_publish.geometry import prepare_zones
@@ -54,23 +51,36 @@ def zones(
         )
         raise typer.Exit(code=2)
 
-    rows, stats = prepare_zones(
-        stem, paths.shipped / "zones.geojson", tolerance_feet=tolerance
-    )
+    rows, stats = prepare_zones(stem, paths.shipped / "zones.geojson", tolerance_feet=tolerance)
     reference = paths.reference / "dim_zone.csv"
     with reference.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(
             [
-                "zone_id", "zone", "borough", "service_zone", "is_unknown",
-                "is_airport", "centroid_lon", "centroid_lat", "area_sq_mi",
+                "zone_id",
+                "zone",
+                "borough",
+                "service_zone",
+                "is_unknown",
+                "is_airport",
+                "has_geometry",
+                "part_count",
+                "centroid_lon",
+                "centroid_lat",
+                "area_sq_mi",
             ]
         )
         for zone in sorted(rows, key=lambda z: z.zone_id):
             writer.writerow(
                 [
-                    zone.zone_id, zone.zone, zone.borough, zone.service_zone,
-                    int(zone.is_unknown), int(zone.is_airport),
+                    zone.zone_id,
+                    zone.zone,
+                    zone.borough,
+                    zone.service_zone,
+                    int(zone.is_unknown),
+                    int(zone.is_airport),
+                    int(zone.has_geometry),
+                    zone.part_count,
                     "" if zone.centroid_lon is None else zone.centroid_lon,
                     "" if zone.centroid_lat is None else zone.centroid_lat,
                     "" if zone.area_sq_mi is None else zone.area_sq_mi,
@@ -90,15 +100,11 @@ def ingest(
         float,
         typer.Option(help="Fraction of full volume, synthetic backend only."),
     ] = 1.0,
-    backend: Annotated[
-        str | None, typer.Option(help="Override the configured backend.")
-    ] = None,
+    backend: Annotated[str | None, typer.Option(help="Override the configured backend.")] = None,
     keep_source: Annotated[
         bool, typer.Option(help="Do not delete source files after ingest.")
     ] = False,
-    fresh: Annotated[
-        bool, typer.Option(help="Drop the warehouse and start over.")
-    ] = False,
+    fresh: Annotated[bool, typer.Option(help="Drop the warehouse and start over.")] = False,
 ) -> None:
     """Resolve, normalize, quarantine and land every month in the window."""
     from cityflow_ingest.pipeline import IngestReport, MonthReport, run_ingest

@@ -1,0 +1,115 @@
+version: 2
+
+# One exposure per dashboard panel. These edges are what dbt docs renders as the
+# path from a source column to a number on screen, so each depends_on list names
+# only the models the panel actually reads. A guessed edge here is worse than a
+# missing one: it sends whoever is investigating a wrong number to the wrong
+# model, and it makes an impact analysis before a change quietly incomplete.
+
+exposures:
+  - name: panel_pulse
+    label: Pulse
+    type: dashboard
+    maturity: high
+    url: https://mekala27-45.github.io/cityflow/
+    description: >
+      How many trips is the city taking, and when? Volume by day, by hour of the
+      week and across the year, split by service, with holidays marked because
+      a holiday Tuesday does not behave like a working Tuesday.
+    depends_on:
+      - ref('fct_trip')
+      - ref('dim_date')
+      - ref('dim_hour')
+      - ref('dim_service')
+    owner:
+      name: Ajay Mekala
+      email: mekalaajayk@gmail.com
+
+  - name: panel_geography
+    label: Geography
+    type: dashboard
+    maturity: high
+    url: https://mekala27-45.github.io/cityflow/
+    description: >
+      Where do trips start and end? Zone and borough volume on the map, airport
+      traffic called out separately, and an explicit count of the trips whose
+      location was never recorded, which are excluded from the map but never
+      from the totals.
+    depends_on:
+      - ref('fct_trip')
+      - ref('dim_zone')
+      - ref('dim_service')
+    owner:
+      name: Ajay Mekala
+      email: mekalaajayk@gmail.com
+
+  - name: panel_trip_behavior
+    label: Trip behavior
+    type: dashboard
+    maturity: high
+    url: https://mekala27-45.github.io/cityflow/
+    description: >
+      What does a trip look like? Distance, duration and implied speed by hour
+      and daypart, and what share of a fare is a tip, computed only over the
+      trips where a tip can actually be seen.
+    depends_on:
+      - ref('fct_trip')
+      - ref('dim_hour')
+      - ref('dim_ratecode')
+      - ref('dim_service')
+    owner:
+      name: Ajay Mekala
+      email: mekalaajayk@gmail.com
+
+  - name: panel_service_mix
+    label: Service mix
+    type: dashboard
+    maturity: high
+    url: https://mekala27-45.github.io/cityflow/
+    description: >
+      Who is carrying the city? The month by month split between yellow, green
+      and high volume for hire vehicles, and how a fare divides into fare,
+      surcharge, toll and tip differently in each.
+    depends_on:
+      - ref('fct_trip')
+      - ref('dim_service')
+      - ref('dim_date')
+      - ref('dim_ratecode')
+    owner:
+      name: Ajay Mekala
+      email: mekalaajayk@gmail.com
+
+  - name: panel_data_health
+    label: Data health
+    type: dashboard
+    maturity: high
+    url: https://mekala27-45.github.io/cityflow/
+    description: >
+      What did not make it, and what changed shape? Rows removed by each
+      quarantine rule as a share of the source, which months are missing, and
+      which columns are null for a whole month because they had not been
+      introduced yet.
+    depends_on:
+      - ref('mart_quarantine')
+      - ref('mart_source_freshness')
+      - ref('mart_null_rates')
+    owner:
+      name: Ajay Mekala
+      email: mekalaajayk@gmail.com
+
+  - name: panel_metric_lineage
+    label: Metric lineage
+    type: dashboard
+    maturity: high
+    url: https://mekala27-45.github.io/cityflow/
+    description: >
+      For any number on the other panels, how was it made? Each metric traced
+      back through the fact to the staging column and the source field it came
+      from, including the rule that decides when a tip is a number and when it
+      is a missing value.
+    depends_on:
+      - ref('stg_trips')
+      - ref('fct_trip')
+    owner:
+      name: Ajay Mekala
+      email: mekalaajayk@gmail.com

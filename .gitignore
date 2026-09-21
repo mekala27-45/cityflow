@@ -33,3 +33,6 @@ web/public/data/*.parquet
 
 # OS
 .DS_Store
+
+# dbt writes this per user
+transform/.user.yml

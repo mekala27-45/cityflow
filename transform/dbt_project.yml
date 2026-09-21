@@ -1,0 +1,30 @@
+# The warehouse is loaded by the Python ingest, which owns stg_trip and the three
+# audit tables. Everything from the staging views down is owned here, so the two
+# halves meet at exactly one place: models/staging/_sources.yml.
+name: cityflow
+version: "0.1.0"
+config-version: 2
+profile: cityflow
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  cityflow:
+    staging:
+      # Views, because staging adds no work worth persisting: the cost of the
+      # derivations is trivial next to the cost of a second copy of 1.3M rows.
+      +materialized: view
+    intermediate:
+      +materialized: ephemeral
+    marts:
+      +materialized: table
+
+seeds:
+  cityflow:
+    # The seeds are hand authored reference data with lowercase headers already.
+    # Quoting them would force every downstream reference to quote too.
+    +quote_columns: false

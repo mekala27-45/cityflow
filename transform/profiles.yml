@@ -1,0 +1,12 @@
+# dbt does not change the working directory for --project-dir, so this path is
+# resolved against wherever dbt is invoked, which for this repository is always
+# the root (see the transform targets in the Makefile and CI). A path relative
+# to transform/ would look tidier and would resolve one directory too high.
+cityflow:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: warehouse/cityflow.duckdb
+      schema: main
+      threads: 4
