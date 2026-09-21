@@ -19,14 +19,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-# U+2014 em dash, U+2013 en dash, U+2015 horizontal bar, U+2212 minus sign.
-# The minus sign is included because editors substitute it for a hyphen and it
-# renders identically to an en dash in most sans-serif faces.
+# The gate cannot contain the characters it forbids, or it fails on itself and
+# every reader has to be told to ignore one file. The table is built from code
+# points instead, which also makes the file diffable: a reviewer can see which
+# code point changed rather than staring at two glyphs that render identically.
+#
+# 0x2014 em dash, 0x2013 en dash, 0x2015 horizontal bar, 0x2212 minus sign.
+# The minus sign is in the list because editors substitute it for a hyphen and
+# it is indistinguishable from an en dash in most sans-serif faces.
 FORBIDDEN: dict[str, str] = {
-    "—": "em dash (U+2014)",
-    "–": "en dash (U+2013)",
-    "―": "horizontal bar (U+2015)",
-    "−": "minus sign (U+2212)",
+    chr(0x2014): "em dash (U+2014)",
+    chr(0x2013): "en dash (U+2013)",
+    chr(0x2015): "horizontal bar (U+2015)",
+    chr(0x2212): "minus sign (U+2212)",
 }
 
 SCANNED_SUFFIXES = frozenset(
@@ -77,10 +82,30 @@ def scan(path: Path) -> list[tuple[int, int, str, str]]:
     return hits
 
 
+def expand(arguments: list[str]) -> list[Path]:
+    """Turn command line arguments into files.
+
+    A directory argument used to scan nothing and exit 0, which is worse than
+    failing: it reported a pass over zero files and read like a pass over the
+    directory. Directories are now walked.
+    """
+    out: list[Path] = []
+    for argument in arguments:
+        path = Path(argument).resolve()
+        if path.is_dir():
+            out.extend(p for p in path.rglob("*") if p.is_file())
+        else:
+            out.append(path)
+    return out
+
+
 def main(argv: list[str]) -> int:
     root = Path(__file__).resolve().parent.parent
     if argv:
-        candidates = [Path(a).resolve() for a in argv]
+        candidates = expand(argv)
+        if not candidates:
+            print("No files matched the given paths.", file=sys.stderr)
+            return 2
     else:
         candidates = tracked_files(root)
 
@@ -100,6 +125,11 @@ def main(argv: list[str]) -> int:
         print(f"\n{total} forbidden dash character(s) across {scanned} scanned files.")
         print("Use a comma, a colon, parentheses, or 'to' for ranges.")
         return 1
+
+    if scanned == 0:
+        # A gate that reports a pass over nothing is a gate that is not running.
+        print("No scannable files found. Refusing to report a pass.", file=sys.stderr)
+        return 2
 
     print(f"No forbidden dash characters in {scanned} scanned files.")
     return 0
