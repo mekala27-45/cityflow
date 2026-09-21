@@ -94,7 +94,7 @@ Nothing here is typed by hand.
                               v
   +--------------------------------------------------------------+
   |  SHIPPED LAYER, what the browser can reach                    |
-  |  23 files, 67.5 MB total,    |
+  |  23 files, 67.4 MB total,    |
   |  largest 31.8 MB                        |
   |  additive components only, never a rate                       |
   +---------------------------+----------------------------------+
@@ -107,8 +107,8 @@ Nothing here is typed by hand.
 ```
 
 92,208,701 rows at trip grain are summarized into
-67.5 MB that the browser queries, which is
-1,366,429 source rows for every megabyte shipped. The detail lives in
+67.4 MB that the browser queries, which is
+1,368,518 source rows for every megabyte shipped. The detail lives in
 the warehouse and the browser queries conformed aggregates. That is not a
 workaround for a static host, it is how BI works, and
 [ARCHITECTURE.md](ARCHITECTURE.md) says why at length because it is the question

@@ -237,11 +237,11 @@ failed rather than a single file, treat it as the signal it is: a shipped layer
 that keeps growing means the aggregate grain has drifted towards the fact table,
 and the fix is upstream of the file.
 
-This build ships 67.48 MB across 23 files
+This build ships 67.38 MB across 23 files
 against a 400 MB total budget, largest file
-31.76 MB against a 95 MB per file
+31.77 MB against a 95 MB per file
 budget. The file to watch as the window grows is `agg_od_flow.parquet`, now
-31.76 MB, because an origin to destination matrix is
+31.77 MB, because an origin to destination matrix is
 quadratic in zones.
 
 ### The claim gate disagrees

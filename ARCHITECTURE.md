@@ -14,8 +14,8 @@ current value and no second copy to drift.
 ## The question
 
 The warehouse holds 92,208,701 trip rows. The dashboard queries
-67.48 MB of parquet spread over 23 files, the
-largest of which is 31.76 MB. DuckDB-WASM can read parquet
+67.38 MB of parquet spread over 23 files, the
+largest of which is 31.77 MB. DuckDB-WASM can read parquet
 over HTTP range requests, and the fact table is parquet. So why is there a layer
 in between?
 
@@ -274,7 +274,7 @@ filter, how many row groups could be skipped outright:
 filter that prunes, and the best of them skips
 87 percent of its file's row groups. Latency there
 is a lower bound with no network and no WebAssembly, and it sits at
-5.87 ms at the median p95, 42.48 ms
+5.55 ms at the median p95, 37.26 ms
 at the worst.
 
 Bytes over the wire cannot be measured locally, because a local read is a file
@@ -337,7 +337,7 @@ The constraint is visible in the design rather than bolted onto it.
   a chart that never shows a zone. At borough grain it is
   3.98 MB.
 - The largest shipped file is `agg_od_flow.parquet` at
-  31.76 MB over
+  31.77 MB over
   2,926,052 rows, because an origin to destination matrix
   is quadratic in zones and there is no coarser grain that still answers the
   question the flow map asks. It is the file to watch as the window grows.
@@ -355,8 +355,8 @@ The constraint is visible in the design rather than bolted onto it.
   scoped to say so explicitly rather than leaving it to be argued about later.
 
 The result is 92,208,701 fact rows summarised into
-67.48 MB across 23 files, which is
-1,366,429 source rows for every megabyte a reader downloads.
+67.38 MB across 23 files, which is
+1,368,518 source rows for every megabyte a reader downloads.
 The per file breakdown is in [RESULTS.md](RESULTS.md).
 
 ## Where each gate sits

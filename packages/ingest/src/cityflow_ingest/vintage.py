@@ -362,6 +362,9 @@ VINTAGES: tuple[Vintage, ...] = (
         has_congestion_surcharge=True,
         has_airport_fee=True,
         has_cbd_congestion_fee=True,
+        has_total_amount=False,
+        has_black_car_fund=True,
+        has_sales_tax=True,
         ignored=FHVHV_IGNORED,
     ),
 )

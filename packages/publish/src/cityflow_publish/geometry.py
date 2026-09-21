@@ -111,11 +111,23 @@ def _service_zone(zone_id: int, borough: str) -> str:
 
 
 def _round_coordinates(obj: Any, places: int = COORDINATE_PRECISION) -> Any:
-    """Recursively round every float in a GeoJSON coordinate structure."""
+    """Recursively round every float in a GeoJSON structure.
+
+    The dict branch is not decoration. shapely's mapping() returns
+    {"type": ..., "coordinates": [...]}, so a version of this that walked only
+    lists and tuples was handed a dict, returned it untouched, and rounded
+    nothing at all while appearing to work. The emitted file was a third larger
+    than it should have been and no test noticed, because every test asked
+    whether the geometry was correct rather than whether the rounding had run.
+    """
+    if isinstance(obj, bool):
+        return obj
     if isinstance(obj, float):
         return round(obj, places)
     if isinstance(obj, int):
         return obj
+    if isinstance(obj, dict):
+        return {key: _round_coordinates(value, places) for key, value in obj.items()}
     if isinstance(obj, list | tuple):
         return [_round_coordinates(item, places) for item in obj]
     return obj

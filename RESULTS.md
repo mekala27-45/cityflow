@@ -3,8 +3,8 @@
 Every figure on this page was produced by a query against the warehouse and
 substituted into this document by `scripts/check_published_numbers.py`. Nothing
 here was typed by hand, and the gate fails the build if this file and the
-warehouse disagree. Built from commit `4e86aad` on
-`2026-09-21T20:28:50.468908+00:00`.
+warehouse disagree. Built from commit `5094ff8` on
+`2026-09-21T21:10:16.312853+00:00`.
 
 **Provenance.** These figures were measured on the `synthetic` backend
 over 42 months, July 2021 to
@@ -175,8 +175,8 @@ is the honest thing for it to be.
 ## 8. The shipped layer
 
 92,208,701 rows at trip grain are summarized into
-67.48 MB across 23 files, the largest of them
-31.76 MB against a 95 MB per file
+67.38 MB across 23 files, the largest of them
+31.77 MB against a 95 MB per file
 budget.
 
 | file | rows | MB |
@@ -186,7 +186,7 @@ budget.
 | `agg_duration_dist.parquet` | 4,281 | 0.01 |
 | `agg_fare_distance.parquet` | 2,204 | 0.04 |
 | `agg_hour_of_week.parquet` | 124,446 | 3.98 |
-| `agg_od_flow.parquet` | 2,926,052 | 31.76 |
+| `agg_od_flow.parquet` | 2,926,052 | 31.77 |
 | `agg_zone_hour.parquet` | 929,826 | 25.03 |
 | `detail_2024_06.parquet` | 303,524 | 5.93 |
 | `dim_date.parquet` | 1,280 | 0.01 |
@@ -203,7 +203,7 @@ budget.
 | `lineage.json` |  | 0.01 |
 | `manifest.json` |  | 0.01 |
 | `metric_catalog.json` |  | 0.01 |
-| `zones.geojson` |  | 0.31 |
+| `zones.geojson` |  | 0.20 |
 
 No aggregate contains a rate. Each contains the numerator and the denominator,
 and the metric layer defines the division. A published rate cannot be
@@ -219,21 +219,21 @@ no network, no WebAssembly.
 
 | panel | query | rows returned | p50 ms | p95 ms | p99 ms | file MB | row groups | pruned |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| pulse | KPI tiles, whole window | 1 | 32.54 | 37.70 | 39.81 | 25.03 | 15 | 0 percent |
-| pulse | Daily volume with trend | 3,840 | 5.44 | 5.87 | 7.77 | 0.20 | 1 | 0 percent |
-| pulse | Hour of week grid | 168 | 2.09 | 2.40 | 2.87 | 3.98 | 2 | 0 percent |
-| pulse | Hour of week, one service | 168 | 2.42 | 3.05 | 3.77 | 3.98 | 2 | 50 percent |
-| geography | Choropleth, trips by zone | 265 | 6.83 | 8.73 | 11.15 | 25.03 | 15 | 0 percent |
-| geography | One zone drilled, every hour | 24 | 3.40 | 3.66 | 3.76 | 25.03 | 15 | 60 percent |
-| geography | Top origin destination flows | 150 | 37.31 | 42.48 | 44.46 | 31.76 | 45 | 0 percent |
-| geography | Flows out of one zone | 263 | 3.09 | 3.21 | 3.42 | 31.76 | 45 | 87 percent |
-| behavior | Duration ridgeline | 1,440 | 2.20 | 2.39 | 2.44 | 0.01 | 1 | 0 percent |
-| behavior | Fare against distance hexbin | 1,261 | 2.44 | 2.74 | 2.77 | 0.04 | 1 | 0 percent |
-| mix | Service share by month | 126 | 10.06 | 10.53 | 11.13 | 25.03 | 15 | 0 percent |
-| geography | Detail month, one zone at trip grain | 500 | 9.94 | 10.62 | 19.44 | 5.93 | 3 | 33 percent |
+| pulse | KPI tiles, whole window | 1 | 32.16 | 34.18 | 34.97 | 25.03 | 15 | 0 percent |
+| pulse | Daily volume with trend | 3,840 | 5.30 | 5.55 | 5.71 | 0.20 | 1 | 0 percent |
+| pulse | Hour of week grid | 168 | 2.03 | 2.39 | 2.96 | 3.98 | 2 | 0 percent |
+| pulse | Hour of week, one service | 168 | 2.06 | 2.14 | 2.24 | 3.98 | 2 | 50 percent |
+| geography | Choropleth, trips by zone | 265 | 6.74 | 8.10 | 9.76 | 25.03 | 15 | 0 percent |
+| geography | One zone drilled, every hour | 24 | 3.47 | 4.10 | 6.98 | 25.03 | 15 | 60 percent |
+| geography | Top origin destination flows | 150 | 36.05 | 37.26 | 51.93 | 31.77 | 45 | 0 percent |
+| geography | Flows out of one zone | 263 | 3.05 | 3.29 | 3.32 | 31.77 | 45 | 87 percent |
+| behavior | Duration ridgeline | 1,440 | 2.31 | 2.57 | 2.67 | 0.01 | 1 | 0 percent |
+| behavior | Fare against distance hexbin | 1,261 | 2.45 | 2.70 | 2.98 | 0.04 | 1 | 0 percent |
+| mix | Service share by month | 126 | 10.09 | 10.97 | 11.07 | 25.03 | 15 | 0 percent |
+| geography | Detail month, one zone at trip grain | 500 | 10.11 | 12.07 | 12.77 | 5.93 | 3 | 33 percent |
 
-Median p95 across the panel queries is 5.87 ms and the
-slowest is 42.48 ms.
+Median p95 across the panel queries is 5.55 ms and the
+slowest is 37.26 ms.
 
 The pruning column is the interesting one. It is computed from the parquet
 footer, not from a timing: for each query's filter it reads the column
@@ -250,7 +250,7 @@ DuckDB-WASM issues in the browser and `scripts/bench_queries.py` folds that log
 into the table above. Over the 6 panel queries whose
 browser traffic was captured, DuckDB-WASM pulled
 10,764,593.00 bytes in 203 range
-requests from files totalling 61,021,635.00 bytes on disk.
+requests from files totalling 61,028,941.00 bytes on disk.
 That is 17.6 percent of the bytes those files
 contain, and zero whole file reads.
 
