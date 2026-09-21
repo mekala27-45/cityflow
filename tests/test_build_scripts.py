@@ -14,6 +14,7 @@ from pathlib import Path
 
 import build_demo_gif
 import build_tableau_extracts
+import build_zone_fixture
 import duckdb
 import pytest
 from PIL import Image
@@ -136,11 +137,80 @@ def test_an_empty_frame_directory_is_refused(tmp_path: Path) -> None:
         build_demo_gif.main([str(empty), str(tmp_path / "demo.gif")])
 
 
+# ---------------------------------------------------------------------------
+# The zone fixture
+# ---------------------------------------------------------------------------
+
+REFERENCE = PATHS.root / "data" / "reference" / "dim_zone.csv"
+
+
+def _reference_shape() -> tuple[int, int, int]:
+    """Polygon records, zone ids with geometry, and zones in several pieces."""
+    with REFERENCE.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    mappable = [row for row in rows if row["has_geometry"] == "1"]
+    return (
+        sum(int(row["part_count"]) for row in mappable),
+        len(mappable),
+        sum(1 for row in mappable if int(row["part_count"]) > 1),
+    )
+
+
+def test_the_fixture_reproduces_the_shape_of_the_real_shapefile(tmp_path: Path) -> None:
+    """The fixture is worth having only if it carries the same defect.
+
+    A stand in with one record per zone would let every geometry test pass
+    while the dissolve did nothing, which is the failure the dissolve exists
+    to prevent. The counts come out of the committed reference rather than
+    being written down here, so the two cannot drift apart.
+    """
+    records, zone_ids, multi_part = _reference_shape()
+    stats = build_zone_fixture.build(REFERENCE, tmp_path / "taxi_zones")
+
+    assert stats["polygon_records"] == records
+    assert stats["zone_ids"] == zone_ids
+    assert stats["multi_part_zones"] == multi_part
+    assert stats["polygon_records"] > stats["zone_ids"], (
+        "The fixture holds one record per zone, so nothing in it fans out and "
+        "every dissolve test built on it is vacuous."
+    )
+    for suffix in (".shp", ".shx", ".dbf", ".prj"):
+        assert (tmp_path / "taxi_zones").with_suffix(suffix).is_file(), suffix
+
+
+def test_the_fixture_is_byte_identical_across_runs(tmp_path: Path) -> None:
+    """A seeded generator that is not reproducible is a generator of noise."""
+    first = tmp_path / "first" / "taxi_zones"
+    second = tmp_path / "second" / "taxi_zones"
+    build_zone_fixture.build(REFERENCE, first)
+    build_zone_fixture.build(REFERENCE, second)
+    for suffix in (".shp", ".shx", ".dbf"):
+        assert first.with_suffix(suffix).read_bytes() == second.with_suffix(suffix).read_bytes(), (
+            suffix
+        )
+
+
+def test_the_fixture_refuses_a_missing_reference(tmp_path: Path) -> None:
+    assert (
+        build_zone_fixture.main(
+            [str(tmp_path / "taxi_zones"), "--reference", str(tmp_path / "absent.csv")]
+        )
+        == 2
+    )
+
+
+def test_the_fixture_builds_from_the_command_line(tmp_path: Path) -> None:
+    assert (
+        build_zone_fixture.main([str(tmp_path / "taxi_zones"), "--reference", str(REFERENCE)]) == 0
+    )
+    assert (tmp_path / "taxi_zones.shp").is_file()
+
+
 def test_the_scripts_are_runnable_as_programs() -> None:
     """The __main__ guards, which nothing else reaches."""
     import subprocess
 
-    for script in ("build_demo_gif.py", "build_tableau_extracts.py"):
+    for script in ("build_demo_gif.py", "build_tableau_extracts.py", "build_zone_fixture.py"):
         result = subprocess.run(
             [sys.executable, str(PATHS.root / "scripts" / script), "--help"],
             capture_output=True,

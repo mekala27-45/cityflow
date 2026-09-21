@@ -1,9 +1,16 @@
 """Zone geometry, and the component list the aggregates are built from.
 
-The geometry tests need the official TLC shapefile, which is not redistributable
-and is therefore not committed. They skip with a message naming the file when it
-is absent rather than passing quietly, because a geometry test that silently
-does not run is how zones 264 and 265 get dropped again.
+The official TLC shapefile is not redistributable and is not committed, so the
+geometry tests here used to skip on any machine without it, which meant all of
+them skipped in continuous integration and the geometry module ran at 41
+percent coverage: the lowest in the repository, and the one module where a
+silent fan out had already shipped once.
+
+They now run against a fixture built by `scripts/build_zone_fixture.py` from
+the committed zone reference, carrying the same 263 polygon records over the
+same 260 zone ids and the same defects, and additionally against the real file
+whenever it is present. A fixture that reproduces the defect is worth more than
+a skip that reports green.
 """
 
 from __future__ import annotations
@@ -11,6 +18,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import build_zone_fixture
 import pytest
 
 from cityflow_publish.aggregates import (
@@ -32,26 +40,50 @@ from cityflow_publish.geometry import (
 REPO = Path(__file__).resolve().parent.parent
 SHAPEFILE_STEM = REPO / "raw" / "zones" / "taxi_zones"
 
-needs_shapefile = pytest.mark.skipif(
-    not SHAPEFILE_STEM.with_suffix(".shp").is_file(),
-    reason=(
-        f"{SHAPEFILE_STEM}.shp is missing. The TLC taxi zone shapefile is not "
-        "redistributable and is not committed; see docs/runbook.md for where it "
-        "comes from, or run 'make zones'."
-    ),
-)
+
+@pytest.fixture(scope="module")
+def fixture_stem(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A shapefile carrying the real file's structure and none of its shapes.
+
+    Built from the committed zone reference, so it holds the same 263 polygon
+    records over the same 260 zone ids, the same two zones in several pieces,
+    and the same five ids with no polygon.
+    """
+    stem = tmp_path_factory.mktemp("zone-fixture") / "taxi_zones"
+    build_zone_fixture.build(REPO / "data" / "reference" / "dim_zone.csv", stem)
+    return stem
+
+
+@pytest.fixture(scope="module", params=["fixture", "real"])
+def shapefile_stem(request: pytest.FixtureRequest, fixture_stem: Path) -> Path:
+    """Every geometry test below runs twice, once against each source.
+
+    The real shapefile is not redistributable, so on a runner only the fixture
+    exists and the real pass skips. That is the whole point: before this, every
+    test in this section skipped on a runner and the geometry module ran at 41
+    percent coverage, in the one module where a silent fan out had already
+    shipped once. A fixture that reproduces the defect is worth more than a
+    skip that reports green.
+    """
+    if request.param == "real":
+        if not SHAPEFILE_STEM.with_suffix(".shp").is_file():
+            pytest.skip(f"{SHAPEFILE_STEM}.shp is not present; see docs/runbook.md.")
+        return SHAPEFILE_STEM
+    return fixture_stem
 
 
 @pytest.fixture(scope="module")
-def prepared(tmp_path_factory: pytest.TempPathFactory) -> tuple[list[Zone], dict[str, float]]:
+def prepared(
+    shapefile_stem: Path, tmp_path_factory: pytest.TempPathFactory
+) -> tuple[list[Zone], dict[str, float]]:
     out = tmp_path_factory.mktemp("zones") / "zones.geojson"
-    return prepare_zones(SHAPEFILE_STEM, out)
+    return prepare_zones(shapefile_stem, out)
 
 
 @pytest.fixture(scope="module")
-def geojson_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+def geojson_path(shapefile_stem: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
     out = tmp_path_factory.mktemp("geojson") / "zones.geojson"
-    prepare_zones(SHAPEFILE_STEM, out)
+    prepare_zones(shapefile_stem, out)
     return out
 
 
@@ -60,7 +92,6 @@ def geojson_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
 # ---------------------------------------------------------------------------
 
 
-@needs_shapefile
 def test_multi_part_zones_are_dissolved_to_one_row(
     prepared: tuple[list[Zone], dict[str, float]],
 ) -> None:
@@ -78,7 +109,6 @@ def test_multi_part_zones_are_dissolved_to_one_row(
     assert sum(zone.part_count for zone in zones) == stats["polygon_records_read"]
 
 
-@needs_shapefile
 def test_the_geometryless_zones_are_emitted_rather_than_lost(
     prepared: tuple[list[Zone], dict[str, float]],
 ) -> None:
@@ -98,7 +128,6 @@ def test_the_geometryless_zones_are_emitted_rather_than_lost(
     assert stats["zones_without_geometry"] == len(GEOMETRYLESS_ZONE_IDS)
 
 
-@needs_shapefile
 def test_the_unknown_codes_are_kept_and_flagged(
     prepared: tuple[list[Zone], dict[str, float]],
 ) -> None:
@@ -121,7 +150,6 @@ def test_the_unknown_codes_are_kept_and_flagged(
     )
 
 
-@needs_shapefile
 def test_the_airport_zones_are_flagged_from_the_id_list(
     prepared: tuple[list[Zone], dict[str, float]],
 ) -> None:
@@ -135,7 +163,6 @@ def test_the_airport_zones_are_flagged_from_the_id_list(
 # ---------------------------------------------------------------------------
 
 
-@needs_shapefile
 def test_simplification_reduces_vertices(
     prepared: tuple[list[Zone], dict[str, float]],
 ) -> None:
@@ -146,14 +173,13 @@ def test_simplification_reduces_vertices(
     assert stats["geojson_bytes"] > 0
 
 
-@needs_shapefile
 def test_a_coarser_tolerance_keeps_fewer_vertices(
-    prepared: tuple[list[Zone], dict[str, float]], tmp_path: Path
+    prepared: tuple[list[Zone], dict[str, float]], shapefile_stem: Path, tmp_path: Path
 ) -> None:
     """The tolerance is a distance in feet and it has to mean something. If it
     did not, the published number would be decoration."""
     _, default = prepared
-    zones, coarse = prepare_zones(SHAPEFILE_STEM, tmp_path / "coarse.geojson", tolerance_feet=600.0)
+    zones, coarse = prepare_zones(shapefile_stem, tmp_path / "coarse.geojson", tolerance_feet=600.0)
     assert coarse["raw_vertices"] == default["raw_vertices"]
     assert coarse["kept_vertices"] < default["kept_vertices"]
     assert coarse["geojson_bytes"] < default["geojson_bytes"]
@@ -161,7 +187,6 @@ def test_a_coarser_tolerance_keeps_fewer_vertices(
     assert len(zones) == default["zones_total"]
 
 
-@needs_shapefile
 def test_the_geojson_carries_one_feature_per_mappable_zone(geojson_path: Path) -> None:
     collection = json.loads(geojson_path.read_text(encoding="utf-8"))
     assert collection["type"] == "FeatureCollection"
@@ -180,7 +205,6 @@ def test_the_geojson_carries_one_feature_per_mappable_zone(geojson_path: Path) -
     assert 40.0 < latitude < 41.5
 
 
-@needs_shapefile
 def test_the_emitted_coordinates_are_rounded_to_the_published_precision(
     geojson_path: Path,
 ) -> None:

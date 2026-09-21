@@ -19,10 +19,12 @@ import shutil
 from collections.abc import Iterator
 from pathlib import Path
 
+import build_zone_fixture
 import pytest
 from typer.testing import CliRunner
 
 from cityflow.cli import app
+from cityflow_core import config as config_module
 from cityflow_core import load_config, session
 from cityflow_core.paths import repo_root
 from cityflow_ingest.synthetic import holidays
@@ -173,15 +175,6 @@ duckdb_memory_limit: 1GB
 duckdb_threads: 2
 """
 
-needs_shapefile = pytest.mark.skipif(
-    not (REPO / "raw" / "zones" / "taxi_zones.shp").is_file(),
-    reason=(
-        f"{REPO / 'raw' / 'zones' / 'taxi_zones'}.shp is missing. The TLC taxi "
-        "zone shapefile is not redistributable and is not committed; see "
-        "docs/runbook.md for where it comes from."
-    ),
-)
-
 
 @pytest.fixture
 def buildable_root(scratch_root: Path) -> Iterator[Path]:
@@ -250,20 +243,54 @@ def test_ingest_fresh_starts_the_warehouse_over(buildable_root: Path) -> None:
     assert again[0] == first[0]
 
 
-def test_ingest_takes_a_backend_override_on_the_command_line(buildable_root: Path) -> None:
+def test_ingest_takes_a_backend_override_on_the_command_line(
+    buildable_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The override exists so the same committed configuration can build either
-    warehouse. Pointing it at tlc with no network has to fail loudly."""
+    warehouse, and a tlc run that cannot reach the published files has to fail
+    loudly rather than quietly falling back to the generator.
+
+    The unreachable host is planted rather than assumed. The first version of
+    this test asserted a non zero exit with no such patch, and passed, because
+    the machine it was written on is denied egress to the TLC distribution host
+    by policy. It failed the first time it ran on a runner with open egress,
+    where the download succeeded and the exit code was zero. A test whose
+    verdict depends on the network of the machine running it is a test of that
+    machine. `.invalid` is reserved by RFC 2606 and resolves nowhere, on any
+    runner, forever.
+    """
+    monkeypatch.setattr(
+        config_module,
+        "TLC_URL_TEMPLATE",
+        "https://tlc.invalid/trip-data/{service}_tripdata_{year:04d}-{month:02d}.parquet",
+    )
     result = runner.invoke(app, ["ingest", "--backend", "tlc", "--scale", "0.02"])
-    assert result.exit_code != 0
+
+    assert result.exit_code != 0, result.output
     assert "backend tlc" in result.output
+    # The override reached the registry: the failure names the host it could
+    # not reach, rather than any generator path.
+    assert "tlc.invalid" in result.output
+    # And it did not fall back. A silent fallback would leave a generated
+    # parquet behind and report success, which is the failure this guards.
+    assert not list((buildable_root / "raw").glob("*.parquet")), (
+        "A tlc run that cannot reach the source wrote a source file anyway, "
+        "which means it fell back to the generator without saying so."
+    )
 
 
-@needs_shapefile
 def test_zones_writes_the_reference_and_the_geojson(scratch_root: Path) -> None:
-    (scratch_root / "raw" / "zones").mkdir(parents=True)
-    for suffix in (".shp", ".shx", ".dbf", ".prj"):
-        target = scratch_root / "raw" / "zones" / f"taxi_zones{suffix}"
-        target.write_bytes((REPO / "raw" / "zones" / f"taxi_zones{suffix}").read_bytes())
+    """Run against the fixture shapefile, so this covers the command on a
+    runner rather than skipping there.
+
+    The real file is not redistributable, and for a long time that meant this
+    test, the one that exercises the command a person actually types, never ran
+    anywhere except the machine it was written on.
+    """
+    build_zone_fixture.build(
+        REPO / "data" / "reference" / "dim_zone.csv",
+        scratch_root / "raw" / "zones" / "taxi_zones",
+    )
 
     result = runner.invoke(app, ["zones", "--tolerance", "300"])
     assert result.exit_code == 0, result.output

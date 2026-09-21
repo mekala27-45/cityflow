@@ -108,6 +108,7 @@ def ingest(
 ) -> None:
     """Resolve, normalize, quarantine and land every month in the window."""
     from cityflow_ingest.pipeline import IngestReport, MonthReport, run_ingest
+    from cityflow_ingest.registry import SourceUnavailableError
 
     config = _config(backend)
     paths = Paths.resolve()
@@ -130,15 +131,24 @@ def ingest(
             f"{month.seconds:5.1f}s"
         )
 
-    with session(config, paths.warehouse) as connection:
-        report: IngestReport = run_ingest(
-            connection,
-            config,
-            paths=paths,
-            scale=scale,
-            release_source=not keep_source,
-            on_progress=progress,
-        )
+    # A source that cannot be reached is an ordinary outcome, not a defect in
+    # this program, so it is reported as a message and an exit code rather than
+    # as a traceback. The registry already writes a message worth reading: it
+    # names the URL, gives curl's exit code, and says which backend needs no
+    # network. All that was missing was anything that printed it.
+    try:
+        with session(config, paths.warehouse) as connection:
+            report: IngestReport = run_ingest(
+                connection,
+                config,
+                paths=paths,
+                scale=scale,
+                release_source=not keep_source,
+                on_progress=progress,
+            )
+    except SourceUnavailableError as error:
+        console.print(f"[red]Source unavailable[/red]\n{error}")
+        raise typer.Exit(code=2) from error
 
     console.print()
     table = Table(title="Quarantine, by rule")

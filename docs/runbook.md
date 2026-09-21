@@ -61,6 +61,32 @@ from and which the generator draws its zone list from, and
 `cityflow zones` and both should be reviewed in the diff when they change, which
 is what `assert_dim_zone_counts` is there to force.
 
+### The stand in, and why there is one
+
+Because the real file cannot be committed, every test that touched the geometry
+module was guarded by a skip, and a skip reports green. On a runner all of them
+skipped at once and the module ran at 41 percent coverage: the lowest figure in
+the repository, in the one module where a silent fan out had already shipped.
+
+`scripts/build_zone_fixture.py` writes a shapefile with the same structure and
+the same defects, built from the committed zone reference so the two cannot
+drift: the same 263 polygon records over the same
+260 zone ids, the same 2
+zones split across several records, and the same ids with no polygon at all. It
+is the same tactic as the trip generator, applied to geometry.
+
+```
+uv run python scripts/build_zone_fixture.py raw/zones/taxi_zones
+```
+
+It is not a map. Every polygon in it is a circle, positioned on the real
+centroid and sized to the real area, and nothing derived from it says anything
+about New York. It exists so that the dissolve, the geometryless ids, the
+unknown codes and the simplification tolerance are all exercised on a machine
+that does not have the real file, which is every machine in continuous
+integration. The geometry tests run against it always and against the real file
+additionally, whenever the real file is present.
+
 ## A clean build against the real TLC data
 
 ```

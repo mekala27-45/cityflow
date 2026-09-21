@@ -103,6 +103,13 @@ CLAIM_QUERIES: dict[str, str] = {
     ),
     "shapefile_polygon_records": "select sum(part_count) from dim_zone",
     "zones_multi_part_polygons": ("select sum(part_count) from dim_zone where part_count > 1"),
+    # The two below describe the same file from the other direction: how many
+    # distinct zone ids those records cover, and how many ids are spread over
+    # more than one of them. The runbook quotes them when it explains what the
+    # fixture shapefile has to reproduce, so they are derived here rather than
+    # written into that document by hand.
+    "shapefile_zone_ids": "select count(*) from dim_zone where has_geometry",
+    "shapefile_multi_part_zones": "select count(*) from dim_zone where part_count > 1",
     # Statistics --------------------------------------------------------------
     "zone_comparisons": "select count(*) from zone_comparison_view",
     "zone_comparisons_naive_significant": (

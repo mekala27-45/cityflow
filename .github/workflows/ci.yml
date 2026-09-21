@@ -98,10 +98,23 @@ jobs:
       - name: run the pipeline into a scratch tree
         run: |
           set -euo pipefail
+          # raw and .git are excluded so this step starts from the same state
+          # on a laptop as it does on a runner. Without the raw exclusion a
+          # developer reproducing this copies whatever parquet happens to be
+          # sitting there and the run stops testing the thing it claims to.
           rsync -a --exclude warehouse --exclude web/out --exclude node_modules \
+            --exclude raw --exclude .git \
             ./ /tmp/e2e/
           cd /tmp/e2e
           export CITYFLOW_BACKEND=synthetic
+          # The TLC shapefile is not redistributable and is not committed, so
+          # there is nothing for 'cityflow zones' to read on a runner. The
+          # fixture is built from the committed zone reference and carries the
+          # same 263 polygon records over the same 260 zone ids, including the
+          # two zones the real file splits across several records, so the
+          # dissolve this step exercises is the one that matters. It is not a
+          # map: every polygon in it is a circle.
+          uv run python scripts/build_zone_fixture.py raw/zones/taxi_zones
           uv run cityflow zones
           uv run cityflow ingest --scale 0.002 --fresh
           uv run dbt seed --project-dir transform --profiles-dir transform

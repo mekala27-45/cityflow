@@ -3,8 +3,8 @@
 Every figure on this page was produced by a query against the warehouse and
 substituted into this document by `scripts/check_published_numbers.py`. Nothing
 here was typed by hand, and the gate fails the build if this file and the
-warehouse disagree. Built from commit `b21e1fb` on
-`2026-09-21T21:23:21.188996+00:00`.
+warehouse disagree. Built from commit `f5e8a62` on
+`2026-09-21T22:33:49.184835+00:00`.
 
 **Provenance.** These figures were measured on the `synthetic` backend
 over 42 months, July 2021 to

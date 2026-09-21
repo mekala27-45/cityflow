@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-09-21T21:23:21.188996+00:00",
-  "commit": "b21e1fb",
+  "generated_at": "2026-09-21T22:33:49.184835+00:00",
+  "commit": "f5e8a62",
   "branch": "main",
   "backend": [
     "synthetic"
@@ -42,6 +42,8 @@
     "cbd_fee_null_months": 126,
     "shapefile_polygon_records": 263,
     "zones_multi_part_polygons": 5,
+    "shapefile_zone_ids": 260,
+    "shapefile_multi_part_zones": 2,
     "zone_comparisons": 757,
     "zone_comparisons_naive_significant": 25,
     "zone_comparisons_after_bh": 0,
@@ -89,7 +91,7 @@
     "mb.metric_catalog_json": 0.01,
     "mb.zones_geojson": 0.2,
     "shipped_files": 23,
-    "shipped_bytes": 67378534,
+    "shipped_bytes": 67378535,
     "shipped_mb": 67.38,
     "largest_shipped_mb": 31.77,
     "summarization_ratio": 1368517.5,
@@ -321,7 +323,7 @@
     {
       "file": "manifest.json",
       "rows": null,
-      "bytes": 14251
+      "bytes": 14252
     },
     {
       "file": "metric_catalog.json",
