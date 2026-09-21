@@ -13,8 +13,9 @@ import math
 
 import numpy as np
 import pytest
-from cityflow_stats import Interval, mean_ci, wilson_interval, wilson_interval_array
 from statsmodels.stats.proportion import proportion_confint
+
+from cityflow_stats import Interval, mean_ci, wilson_interval, wilson_interval_array
 
 
 def test_textbook_ten_of_one_hundred() -> None:

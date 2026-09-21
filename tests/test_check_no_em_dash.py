@@ -36,20 +36,18 @@ def test_clean_file_passes(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("character", "label"),
+    ("code_point", "label"),
     [
-        ("—", "em dash"),
-        ("–", "en dash"),
-        ("―", "horizontal bar"),
-        ("−", "minus sign"),
+        (0x2014, "em dash"),
+        (0x2013, "en dash"),
+        (0x2015, "horizontal bar"),
+        (0x2212, "minus sign"),
     ],
 )
-def test_each_forbidden_character_is_caught(
-    tmp_path: Path, character: str, label: str
-) -> None:
+def test_each_forbidden_character_is_caught(tmp_path: Path, code_point: int, label: str) -> None:
     """The deliberate violation, once per character the gate claims to catch."""
     dirty = tmp_path / "dirty.py"
-    dirty.write_text(f'"""A docstring with a {character} in it."""\n')
+    dirty.write_text(f'"""A docstring with a {chr(code_point)} in it."""\n')
     result = run_gate(dirty)
     assert result.returncode == 1, f"{label} was not caught"
     assert label in result.stdout
@@ -63,7 +61,7 @@ def test_directory_argument_is_walked(tmp_path: Path) -> None:
     """
     package = tmp_path / "package"
     (package / "nested").mkdir(parents=True)
-    (package / "nested" / "module.py").write_text("x = 1  # a — hides here\n")
+    (package / "nested" / "module.py").write_text(f"x = 1  # a {chr(0x2014)} hides here\n")
     result = run_gate(package)
     assert result.returncode == 1
     assert "em dash" in result.stdout
@@ -81,13 +79,9 @@ def test_empty_scan_is_not_a_pass(tmp_path: Path) -> None:
 def test_box_drawing_characters_survive(tmp_path: Path) -> None:
     """The architecture diagrams are drawn with a different Unicode block."""
     diagram = tmp_path / "architecture.md"
-    diagram.write_text(
-        "```\n"
-        "┌───┐\n"
-        "│ a │\n"
-        "└───┘\n"
-        "```\n"
-    )
+    box = "".join(chr(c) for c in (0x250C, 0x2500, 0x2500, 0x2500, 0x2510))
+    side = chr(0x2502)
+    diagram.write_text(f"```\n{box}\n{side} a {side}\n{box}\n```\n")
     result = run_gate(diagram)
     assert result.returncode == 0, result.stdout
 

@@ -36,8 +36,23 @@ FORBIDDEN: dict[str, str] = {
 
 SCANNED_SUFFIXES = frozenset(
     {
-        ".py", ".md", ".sql", ".yml", ".yaml", ".toml", ".ts", ".tsx", ".js",
-        ".jsx", ".css", ".json", ".txt", ".sh", ".cfg", ".ini", ".html",
+        ".py",
+        ".md",
+        ".sql",
+        ".yml",
+        ".yaml",
+        ".toml",
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".css",
+        ".json",
+        ".txt",
+        ".sh",
+        ".cfg",
+        ".ini",
+        ".html",
     }
 )
 

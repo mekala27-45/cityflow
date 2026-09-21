@@ -31,6 +31,7 @@ dev = [
     "sqlfluff>=3.3",
     "types-PyYAML>=6.0",
     "pandas-stubs>=2.2",
+    "types-shapely>=2.0",
 ]
 
 [tool.uv.workspace]
@@ -80,6 +81,12 @@ ignore = [
 "tests/**" = ["ARG"]          # pytest fixtures are arguments that look unused
 "packages/*/tests/**" = ["ARG"]
 
+[tool.ruff.lint.isort]
+known-first-party = [
+    "cityflow", "cityflow_core", "cityflow_ingest", "cityflow_stats",
+    "cityflow_publish",
+]
+
 [tool.ruff.format]
 quote-style = "double"
 
@@ -94,7 +101,7 @@ plugins = []
 [[tool.mypy.overrides]]
 # These ship no type information. The wrappers around them in cityflow_stats
 # are annotated, so the strictness is preserved at our own boundary.
-module = ["statsmodels.*", "duckdb.*", "scipy.*"]
+module = ["statsmodels.*", "duckdb.*", "scipy.*", "shapefile"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

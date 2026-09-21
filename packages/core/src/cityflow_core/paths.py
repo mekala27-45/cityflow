@@ -33,8 +33,7 @@ def repo_root() -> Path:
         if marker.is_file() and WORKSPACE_KEY in marker.read_text(encoding="utf-8"):
             return candidate
     raise RuntimeError(
-        "Could not locate the cityflow workspace root. "
-        "Set CITYFLOW_ROOT to the repository root."
+        "Could not locate the cityflow workspace root. Set CITYFLOW_ROOT to the repository root."
     )
 
 

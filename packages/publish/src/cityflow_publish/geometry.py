@@ -29,7 +29,7 @@ from typing import Any
 
 import shapefile
 from pyproj import Transformer
-from shapely.geometry import mapping, shape
+from shapely.geometry import Point, mapping, shape
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform
 
@@ -103,9 +103,14 @@ def _round_coordinates(obj: Any, places: int = COORDINATE_PRECISION) -> Any:
 
 def _to_wgs84(geometry: BaseGeometry) -> BaseGeometry:
     transformer = Transformer.from_crs(SOURCE_CRS, TARGET_CRS, always_xy=True)
-    return shapely_transform(
-        lambda x, y, z=None: transformer.transform(x, y), geometry  # noqa: ARG005
-    )
+
+    def project(x: Any, y: Any, z: Any = None) -> tuple[Any, Any]:
+        # shapely passes a third ordinate for 3D geometries. The taxi zones are
+        # flat, so it is accepted and dropped rather than refused.
+        del z
+        return transformer.transform(x, y)
+
+    return shapely_transform(project, geometry)
 
 
 def prepare_zones(
@@ -155,7 +160,12 @@ def prepare_zones(
         area_sq_mi = projected.area / 27_878_400.0
 
         wgs84 = _to_wgs84(simplified)
+        # The centroid is taken on the full polygon, not the simplified one, so
+        # the flow map arcs land where the zone actually is rather than where
+        # the 150 foot tolerance left it.
         centroid = _to_wgs84(projected.centroid)
+        if not isinstance(centroid, Point):  # pragma: no cover
+            raise TypeError(f"Zone {zone_id} centroid is not a point")
 
         zones.append(
             Zone(
@@ -209,9 +219,7 @@ def prepare_zones(
         "features": features,
     }
     geojson_out.parent.mkdir(parents=True, exist_ok=True)
-    geojson_out.write_text(
-        json.dumps(collection, separators=(",", ":")), encoding="utf-8"
-    )
+    geojson_out.write_text(json.dumps(collection, separators=(",", ":")), encoding="utf-8")
 
     stats = {
         "zones_with_geometry": float(len(features)),

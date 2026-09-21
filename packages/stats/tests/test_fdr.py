@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from cityflow_stats import benjamini_hochberg, pairwise_proportion_tests
 from statsmodels.stats.multitest import multipletests
 from statsmodels.stats.proportion import proportions_ztest
+
+from cityflow_stats import benjamini_hochberg, pairwise_proportion_tests
 
 BH_1995_P_VALUES = np.fromstring(
     "0.0001 0.0004 0.0019 0.0095 0.0201 0.0278 0.0298 0.0344 "

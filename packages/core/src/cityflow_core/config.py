@@ -107,9 +107,7 @@ class SourceSpec(StrictModel):
 
     @property
     def url(self) -> str:
-        return TLC_URL_TEMPLATE.format(
-            service=self.service, year=self.year, month=self.month
-        )
+        return TLC_URL_TEMPLATE.format(service=self.service, year=self.year, month=self.month)
 
     @property
     def filename(self) -> str:

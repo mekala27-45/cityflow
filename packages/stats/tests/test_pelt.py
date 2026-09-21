@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 import pytest
+
 from cityflow_stats import L2Cost, bic_penalty, estimate_sigma, pelt
 
 PLANTED = (100, 250, 400)
