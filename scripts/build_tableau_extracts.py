@@ -9,7 +9,9 @@ dragged Borough onto the view. tableau/README.md gives the calculated fields.
 
 from __future__ import annotations
 
+import argparse
 import sys
+from pathlib import Path
 
 import duckdb
 
@@ -73,7 +75,15 @@ EXTRACTS: dict[str, str] = {
 }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--out",
+        default="",
+        help="Where to write the extracts. Defaults to tableau/ in the repository.",
+    )
+    args = parser.parse_args(argv)
+
     paths = Paths.resolve()
     shipped = paths.shipped
     if not (shipped / "agg_zone_hour.parquet").is_file():
@@ -83,7 +93,7 @@ def main() -> int:
         )
         return 2
 
-    out = paths.root / "tableau"
+    out = Path(args.out) if args.out else paths.root / "tableau"
     out.mkdir(parents=True, exist_ok=True)
     connection = duckdb.connect()
     for name, template in EXTRACTS.items():
@@ -98,4 +108,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))
