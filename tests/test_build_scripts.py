@@ -38,16 +38,19 @@ RATE_SHAPED = ("_rate", "_share", "_pct", "percent", "avg_", "mean_", "_per_")
 def test_the_extracts_build_and_carry_only_components(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.chdir(PATHS.root)
+    # Written to tmp_path, never to the repository's own tableau directory. A
+    # test that rewrites a tracked file leaves the working tree dirty after a
+    # clean run, and the next person to see that spends ten minutes finding out
+    # it was the test suite.
     monkeypatch.setattr(
         build_tableau_extracts.Paths,
         "resolve",
         classmethod(lambda cls: Paths(root=PATHS.root)),
     )
-    assert build_tableau_extracts.main([]) == 0
+    assert build_tableau_extracts.main(["--out", str(tmp_path)]) == 0
 
     for name in build_tableau_extracts.EXTRACTS:
-        target = PATHS.root / "tableau" / name
+        target = tmp_path / name
         assert target.is_file(), name
         with target.open(encoding="utf-8", newline="") as handle:
             header = next(csv.reader(handle))
@@ -146,3 +149,30 @@ def test_the_scripts_are_runnable_as_programs() -> None:
         )
         assert result.returncode == 0, script
         assert "usage" in result.stdout.lower()
+
+
+@needs_shipped
+def test_the_extracts_are_byte_identical_across_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rebuild that changes nothing must produce no diff.
+
+    It did not, twice over, and both causes are the kind that hide. A parallel
+    sum of doubles is not associative, so the last digit moved between runs;
+    and five zone ids share a name with another zone, so ordering by name left
+    those rows in an order the engine was free to change. Neither changed a
+    number anybody would read, and both produced a two hundred line diff on a
+    rebuild, which is how a generated file stops being trusted.
+    """
+    monkeypatch.setattr(
+        build_tableau_extracts.Paths,
+        "resolve",
+        classmethod(lambda cls: Paths(root=PATHS.root)),
+    )
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    assert build_tableau_extracts.main(["--out", str(first)]) == 0
+    assert build_tableau_extracts.main(["--out", str(second)]) == 0
+
+    for name in build_tableau_extracts.EXTRACTS:
+        assert (first / name).read_bytes() == (second / name).read_bytes(), name
