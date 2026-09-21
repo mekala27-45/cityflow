@@ -8,6 +8,9 @@ dependencies = [
     "cityflow-stats",
     "duckdb>=1.1",
     "pyarrow>=18.0",
+    "pyshp>=2.3",
+    "pyproj>=3.7",
+    "shapely>=2.0",
 ]
 
 [build-system]
