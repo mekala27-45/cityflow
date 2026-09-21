@@ -37,3 +37,6 @@ web/.turbo/
 
 # dbt writes this per user
 transform/.user.yml
+
+# Recorded frames are an intermediate, the animation is the artifact
+web/tests/demo-frames/

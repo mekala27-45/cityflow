@@ -147,6 +147,11 @@ web-test:  ## Playwright smoke test against the built export
 tableau:  ## Rebuild the three CSV extracts the Tableau companion reads
 	$(UV) run python scripts/build_tableau_extracts.py
 
+.PHONY: demo
+demo:  ## Record the demo animation from the built export
+	cd web && node tests/record-demo.mjs tests/demo-frames
+	$(UV) run python scripts/build_demo_gif.py web/tests/demo-frames docs/demo.gif
+
 .PHONY: bench
 bench:  ## Measure every panel query: latency, bytes pulled, row groups skipped
 	$(UV) run python scripts/bench_queries.py

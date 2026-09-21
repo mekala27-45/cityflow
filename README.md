@@ -13,6 +13,13 @@ browser by DuckDB-WASM over HTTP range requests.
 
 No key, no server, no setup. The demo is a static page.
 
+![The hour of week grid and the flow map, both answering live queries](docs/demo.gif)
+
+Every frame above is a query. The grid is
+124,446 published rows read by HTTP range
+request, and each filter click runs SQL in the browser against parquet it never
+downloads whole.
+
 ---
 
 ## The finding
