@@ -224,8 +224,6 @@ def load_config(path: Path | None = None) -> CityflowConfig:
     override = os.environ.get("CITYFLOW_BACKEND")
     if override:
         if override not in ("tlc", "synthetic"):
-            raise ValueError(
-                f"CITYFLOW_BACKEND is {override!r}, expected 'tlc' or 'synthetic'."
-            )
+            raise ValueError(f"CITYFLOW_BACKEND is {override!r}, expected 'tlc' or 'synthetic'.")
         raw["backend"] = override
     return CityflowConfig.model_validate(raw)

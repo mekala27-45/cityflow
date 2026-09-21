@@ -214,8 +214,11 @@ def ingest_month(
         f"""
         create temporary table labelled_month as
         with normalized as (
-            {normalize_select(spec, resolved.vintage, resolved.path,
-                              trip_id_offset=trip_id_offset(spec))}
+            {
+            normalize_select(
+                spec, resolved.vintage, resolved.path, trip_id_offset=trip_id_offset(spec)
+            )
+        }
         ),
         ruled as (
             select *, {quarantine_case(rules)} as rule_hit

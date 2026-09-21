@@ -1,0 +1,256 @@
+# Every number published anywhere in this product is defined here, once.
+#
+# Each metric carries two expressions and that is the point of the file.
+#
+#   warehouse: SQL over fct_trip, the grain. This is the truth.
+#   browser:   SQL over the additive columns of the shipped aggregate layer,
+#              which is what DuckDB-WASM actually runs in the page.
+#
+# `cityflow reconcile` evaluates both and fails the build when they disagree by
+# more than a stated tolerance. That is the test that makes a metric layer
+# worth having: without it, a metric layer is a document about the code rather
+# than a constraint on it.
+#
+# `components` lists the additive columns the browser expression needs. The
+# aggregate builders read this list, so adding a metric that needs a new
+# component fails loudly at publish time instead of returning nulls in the UI.
+#
+# `kind` decides which interval applies:
+#   proportion  a count over a count. Wilson score interval.
+#   mean        the mean of a per trip quantity. Student t interval.
+#   sum         additive. No interval; a total is not an estimate.
+#   ratio       a ratio of two sums. No interval; see docs/statistics.md for
+#               why a delta method interval on these is not worth the
+#               precision it implies at this sample size.
+
+version: 1
+
+defaults:
+  owner: analytics
+  models: [fct_trip]
+
+metrics:
+  - name: trips
+    kind: sum
+    description: Count of trips that passed every quarantine rule.
+    grain: [date, hour, zone, service]
+    unit: trips
+    format: "{:,.0f}"
+    components: [trips]
+    warehouse: count(*)
+    browser: sum(trips)
+
+  - name: revenue
+    kind: sum
+    description: >
+      Total paid by riders, including tips, tolls and surcharges. For yellow
+      and green this is the published total_amount. For hire vehicle files
+      publish no total, so it is summed from the components, which is stated
+      in docs/data.md and is not the same construction.
+    grain: [date, hour, zone, service]
+    unit: USD
+    format: "${:,.0f}"
+    components: [total_amount_sum]
+    warehouse: sum(total_amount)
+    browser: sum(total_amount_sum)
+
+  - name: fare_revenue
+    kind: sum
+    description: Base fare only, before tips, tolls and surcharges.
+    grain: [date, hour, zone, service]
+    unit: USD
+    format: "${:,.0f}"
+    components: [fare_amount_sum]
+    warehouse: sum(fare_amount)
+    browser: sum(fare_amount_sum)
+
+  - name: mean_fare
+    kind: mean
+    description: Mean base fare per trip.
+    grain: [date, hour, zone, service]
+    unit: USD
+    format: "${:,.2f}"
+    interval: student-t
+    components: [fare_amount_sum, trips]
+    warehouse: avg(fare_amount)
+    browser: sum(fare_amount_sum) / nullif(sum(trips), 0)
+
+  - name: mean_distance_mi
+    kind: mean
+    description: Mean trip distance in miles.
+    grain: [date, hour, zone, service]
+    unit: miles
+    format: "{:,.2f} mi"
+    interval: student-t
+    components: [trip_distance_sum, trips]
+    warehouse: avg(trip_distance)
+    browser: sum(trip_distance_sum) / nullif(sum(trips), 0)
+
+  - name: mean_duration_min
+    kind: mean
+    description: Mean trip duration in minutes.
+    grain: [date, hour, zone, service]
+    unit: minutes
+    format: "{:,.1f} min"
+    interval: student-t
+    components: [duration_s_sum, trips]
+    warehouse: avg(duration_s) / 60.0
+    browser: sum(duration_s_sum) / nullif(sum(trips), 0) / 60.0
+
+  - name: mean_speed_mph
+    kind: ratio
+    description: >
+      Total distance over total time, not the mean of per trip speeds. The two
+      differ, and the ratio of sums is the one that answers "how fast does the
+      fleet move", because it weights a forty minute crawl more than a two
+      minute hop. The mean of ratios answers a different question and is the
+      one people compute by accident.
+    grain: [date, hour, zone, service]
+    unit: mph
+    format: "{:,.1f} mph"
+    components: [trip_distance_sum, duration_s_sum]
+    warehouse: sum(trip_distance) / nullif(sum(duration_s), 0) * 3600.0
+    browser: sum(trip_distance_sum) / nullif(sum(duration_s_sum), 0) * 3600.0
+
+  - name: revenue_per_mile
+    kind: ratio
+    description: Total revenue over total distance.
+    grain: [date, hour, zone, service]
+    unit: USD per mile
+    format: "${:,.2f}/mi"
+    components: [total_amount_sum, trip_distance_sum]
+    warehouse: sum(total_amount) / nullif(sum(trip_distance), 0)
+    browser: sum(total_amount_sum) / nullif(sum(trip_distance_sum), 0)
+
+  - name: tip_rate
+    kind: ratio
+    description: >
+      Tips as a share of fare, over trips whose payment channel records a tip.
+      Cash trips record a tip of zero because no tip passed through the meter,
+      and that zero is a missing value. Including them drags this number down
+      by about a third on yellow and green, which is why most published NYC tip
+      rates are wrong. For hire vehicle trips are settled in the app, so their
+      zeroes are real zeroes and they are included.
+    grain: [date, hour, zone, service]
+    unit: share of fare
+    format: "{:.2%}"
+    filters: ["tip_is_observable"]
+    components: [tip_obs_trips, tip_obs_tip_sum, tip_obs_fare_sum]
+    warehouse: >
+      sum(case when tip_is_observable then tip_amount end)
+      / nullif(sum(case when tip_is_observable then fare_amount end), 0)
+    browser: sum(tip_obs_tip_sum) / nullif(sum(tip_obs_fare_sum), 0)
+
+  - name: tipped_share
+    kind: proportion
+    description: >
+      Share of trips that left any tip at all, over trips whose payment channel
+      records one. This is the proportion that carries a Wilson interval; the
+      tip rate above is a ratio of sums and does not.
+    grain: [date, hour, zone, service]
+    unit: share of trips
+    format: "{:.1%}"
+    interval: wilson
+    filters: ["tip_is_observable"]
+    components: [tipped_trips, tip_obs_trips]
+    warehouse: >
+      count(*) filter (where tip_is_observable and tip_amount > 0)::double
+      / nullif(count(*) filter (where tip_is_observable), 0)
+    browser: sum(tipped_trips)::double / nullif(sum(tip_obs_trips), 0)
+    numerator: tipped_trips
+    denominator: tip_obs_trips
+
+  - name: airport_share
+    kind: proportion
+    description: Share of trips with an airport at either end.
+    grain: [date, hour, zone, service]
+    unit: share of trips
+    format: "{:.2%}"
+    interval: wilson
+    components: [airport_trips, trips]
+    warehouse: count(*) filter (where is_airport_trip)::double / nullif(count(*), 0)
+    browser: sum(airport_trips)::double / nullif(sum(trips), 0)
+    numerator: airport_trips
+    denominator: trips
+
+  - name: unknown_zone_share
+    kind: proportion
+    description: >
+      Share of trips with an unresolved zone at either end. Published because
+      these trips are excluded from every geographic aggregate, and a reader
+      needs to know how much of the city is missing from the map.
+    grain: [date, hour, zone, service]
+    unit: share of trips
+    format: "{:.2%}"
+    interval: wilson
+    components: [unknown_zone_trips, trips]
+    warehouse: >
+      count(*) filter (where not has_known_geography)::double / nullif(count(*), 0)
+    browser: sum(unknown_zone_trips)::double / nullif(sum(trips), 0)
+    numerator: unknown_zone_trips
+    denominator: trips
+
+  - name: card_share
+    kind: proportion
+    description: >
+      Share of yellow and green trips settled by card. For hire vehicle trips
+      are all settled in the app and are excluded, since including them would
+      make this a measure of market share rather than of payment behaviour.
+    grain: [date, hour, zone, service]
+    unit: share of trips
+    format: "{:.1%}"
+    interval: wilson
+    filters: ["service in ('yellow', 'green')"]
+    components: [card_trips, metered_trips]
+    warehouse: >
+      count(*) filter (where payment_type = 'card')::double
+      / nullif(count(*) filter (where service in ('yellow', 'green')), 0)
+    browser: sum(card_trips)::double / nullif(sum(metered_trips), 0)
+    numerator: card_trips
+    denominator: metered_trips
+
+  - name: flat_rate_share
+    kind: proportion
+    description: >
+      Share of metered trips on a flat rate, which is the JFK rate and the
+      Newark rate. Visible as horizontal bands in the fare against distance
+      chart, and the reason that chart is not a clean curve.
+    grain: [date, hour, zone, service]
+    unit: share of trips
+    format: "{:.2%}"
+    interval: wilson
+    filters: ["ratecode_id in (2, 3)"]
+    components: [flat_rate_trips, metered_trips]
+    warehouse: >
+      count(*) filter (where ratecode_id in (2, 3))::double
+      / nullif(count(*) filter (where service in ('yellow', 'green')), 0)
+    browser: sum(flat_rate_trips)::double / nullif(sum(metered_trips), 0)
+    numerator: flat_rate_trips
+    denominator: metered_trips
+
+  - name: congestion_revenue
+    kind: sum
+    description: >
+      Total congestion surcharge collected. Null before February 2019 rather
+      than zero, so a window that spans the introduction shows a gap and not a
+      step from nothing.
+    grain: [date, hour, zone, service]
+    unit: USD
+    format: "${:,.0f}"
+    components: [congestion_surcharge_sum]
+    warehouse: sum(congestion_surcharge)
+    browser: sum(congestion_surcharge_sum)
+
+  - name: mean_passengers
+    kind: mean
+    description: >
+      Mean passengers per trip, over trips that record it. For hire vehicle
+      files do not, and their trips are excluded rather than counted as one.
+    grain: [date, hour, zone, service]
+    unit: passengers
+    format: "{:,.2f}"
+    interval: student-t
+    filters: ["passenger_count is not null"]
+    components: [passenger_count_sum, passenger_trips]
+    warehouse: avg(passenger_count)
+    browser: sum(passenger_count_sum) / nullif(sum(passenger_trips), 0)

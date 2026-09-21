@@ -207,8 +207,11 @@ def publish(
     config = _config(backend)
     paths = Paths.resolve()
     paths.ensure()
+    from cityflow_publish.analysis import run_analysis
+
     with session(config, paths.warehouse, read_only=True) as connection:
         results = build_all(connection, config, paths)
+        analysis = run_analysis(connection, config, paths)
 
     table = Table(title="Shipped layer")
     table.add_column("file")
@@ -228,6 +231,54 @@ def publish(
         )
     table.add_row("[bold]total[/bold]", "", f"[bold]{total_mb:.2f}[/bold]", "", "")
     console.print(table)
+
+    console.print(
+        f"decomposition {analysis.decomposition_rows:,} rows, "
+        f"{sum(len(v) for v in analysis.changepoints.values())} changepoints, "
+        f"{analysis.zone_comparisons} zone comparisons of which "
+        f"{analysis.zone_comparisons_significant} survive Benjamini-Hochberg "
+        f"at q={analysis.fdr_q}"
+    )
+    for note in analysis.notes:
+        console.print(f"  {note}")
+
+
+@app.command()
+def reconcile() -> None:
+    """Run every metric twice, from the warehouse and from the shipped layer."""
+    from cityflow_publish.reconcile import reconcile_all
+
+    config = load_config()
+    paths = Paths.resolve()
+    with session(config, paths.warehouse, read_only=True) as connection:
+        report = reconcile_all(connection, paths)
+
+    if report.ok:
+        console.print(
+            f"[green]{report.cells} metrics reconcile[/green] across "
+            f"{report.checks} grain checks: the shipped aggregates agree with "
+            "the warehouse everywhere."
+        )
+        return
+
+    table = Table(title=f"{len(report.disagreements)} disagreements")
+    table.add_column("metric")
+    table.add_column("grain")
+    table.add_column("key")
+    table.add_column("warehouse", justify="right")
+    table.add_column("browser", justify="right")
+    for item in report.disagreements[:40]:
+        table.add_row(
+            item.metric,
+            item.grain,
+            item.key,
+            f"{item.warehouse!r}",
+            f"{item.browser!r}",
+        )
+    console.print(table)
+    if len(report.disagreements) > 40:
+        console.print(f"... and {len(report.disagreements) - 40} more")
+    raise typer.Exit(code=1)
 
 
 @app.command()

@@ -103,12 +103,8 @@ class SourceRegistry:
             self._generate(spec, vintage, target)
         return self._describe(spec, vintage, target)
 
-    def _describe(
-        self, spec: SourceSpec, vintage: Vintage, path: Path
-    ) -> ResolvedSource:
-        row = self.connection.execute(
-            f"select count(*) from read_parquet('{path}')"
-        ).fetchone()
+    def _describe(self, spec: SourceSpec, vintage: Vintage, path: Path) -> ResolvedSource:
+        row = self.connection.execute(f"select count(*) from read_parquet('{path}')").fetchone()
         return ResolvedSource(
             spec=spec,
             vintage=vintage,
@@ -136,9 +132,20 @@ class SourceRegistry:
         partial = target.with_suffix(".parquet.partial")
         result = subprocess.run(
             [
-                "curl", "--fail", "--location", "--silent", "--show-error",
-                "--retry", "3", "--retry-delay", "2", "--continue-at", "-",
-                "--output", str(partial), spec.url,
+                "curl",
+                "--fail",
+                "--location",
+                "--silent",
+                "--show-error",
+                "--retry",
+                "3",
+                "--retry-delay",
+                "2",
+                "--continue-at",
+                "-",
+                "--output",
+                str(partial),
+                spec.url,
             ],
             capture_output=True,
             text=True,
@@ -158,9 +165,7 @@ class SourceRegistry:
         if spec.service not in self._zone_tables_installed:
             install_zone_tables(self.connection, self.zones, spec.service)
             self._zone_tables_installed.add(spec.service)
-        generate_month(
-            self.connection, self.config, spec, vintage, target, scale=self.scale
-        )
+        generate_month(self.connection, self.config, spec, vintage, target, scale=self.scale)
 
     def check_schema(self, resolved: ResolvedSource) -> tuple[set[str], set[str]]:
         """What the file is missing, and what it carries that we did not expect.
