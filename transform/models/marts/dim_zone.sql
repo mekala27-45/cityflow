@@ -1,8 +1,15 @@
--- has_geometry is the column the map reads. Zones 264 and 265 are the TLC's own
--- codes for a location the driver or the app never resolved. They are not empty
--- rows to be cleaned away: they carry real trips and real money, and dropping
--- them silently would move every borough share. They are kept, flagged, and
--- excluded from anything that needs a point on a map by has_geometry.
+-- has_geometry is the column the map reads, and it now comes from the ingest
+-- rather than being inferred here from a null centroid. Two different things
+-- make a zone unmappable and they must not be conflated:
+--
+--   is_unknown: zones 264 and 265, the TLC's own codes for a location that was
+--   never resolved. They carry real trips and real money. They are kept,
+--   flagged, and excluded from anything drawn on a map, never from a total.
+--
+--   has_geometry false with is_unknown false: zones 57, 104 and 105, which are
+--   real places a trip record can name but which have no polygon in the
+--   published shapefile. The trip's location is known, it simply cannot be
+--   drawn. Counting these as unknown would overstate the unresolved share.
 
 with zones as (
 
@@ -17,8 +24,9 @@ select
     service_zone,
     is_unknown,
     is_airport,
+    has_geometry,
+    part_count,
     centroid_lon,
     centroid_lat,
-    area_sq_mi,
-    centroid_lon is not null and centroid_lat is not null as has_geometry
+    area_sq_mi
 from zones

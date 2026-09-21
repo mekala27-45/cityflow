@@ -3,10 +3,14 @@ version: 2
 models:
   - name: dim_zone
     description: >
-      One row per TLC taxi zone, 262 of them. Zones 264 and 265 are the TLC's
-      unknown codes: they have no geometry, they carry real trip volume, and
-      has_geometry is what keeps them out of anything drawn on a map without
-      also dropping them from the totals.
+      One row per TLC taxi zone, 265 of them, 260 with a polygon. Two separate
+      things make a zone unmappable and the map has to tell them apart.
+      is_unknown marks zones 264 and 265, the TLC's codes for a location that
+      was never resolved: real trips, real money, no place. has_geometry false
+      with is_unknown false marks zones 57, 104 and 105, real places the trip
+      records can name that the shapefile does not carry. Anything drawn on a
+      map filters on has_geometry; anything reporting unresolved location reads
+      is_unknown. Neither is ever dropped from a total.
     columns:
       - name: zone_id
         data_tests:
@@ -30,8 +34,10 @@ models:
           - not_null
       - name: has_geometry
         description: >
-          False exactly for the unknown zones. Tested conditionally rather than
-          globally, because the rule being asserted is about those two rows.
+          Taken from the ingest, not inferred from a null centroid. Always false
+          for an unknown zone, which is tested conditionally because that rule
+          is about those two rows and not about the other three without a
+          polygon. The exact counts are asserted in assert_dim_zone_counts.
         data_tests:
           - not_null
           - accepted_values:
@@ -40,12 +46,30 @@ models:
                 quote: false
               config:
                 where: "is_unknown"
+      - name: part_count
+        description: >
+          Polygons dissolved into this zone, zero where there are none. Asserted
+          conditionally so that a zone claiming parts but no geometry, which is
+          the signature of a half completed dissolve, fails here.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["0"]
+                quote: false
+              config:
+                where: "not has_geometry"
       - name: centroid_lat
         data_tests:
           - not_null:
               config:
                 where: "has_geometry"
       - name: centroid_lon
+        data_tests:
+          - not_null:
+              config:
+                where: "has_geometry"
+      - name: area_sq_mi
         data_tests:
           - not_null:
               config:
@@ -252,6 +276,11 @@ models:
         data_tests:
           - not_null
       - name: has_known_geography
+        description: >
+          Neither endpoint is one of the TLC's unknown codes. This is about the
+          location being identified, not about it being drawable: a zone can be
+          known and still have no polygon, which is what dim_zone.has_geometry
+          is for. A map filters on that column, not on this one.
         data_tests:
           - not_null
       - name: is_airport_trip

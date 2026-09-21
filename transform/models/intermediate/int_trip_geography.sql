@@ -7,6 +7,11 @@
 -- flag, would make has_known_geography null, and a null there reads as "no" in
 -- some tools and as "yes" in others.
 --
+-- The dimension now carries every published id 1 to 265, so the coalesce below
+-- is a guard rather than a routine path. It stays because the day it starts
+-- firing is the day the reference lost a zone, and a wrong flag is easier to
+-- find than a null that half the tools swallow.
+--
 -- Ephemeral, so this is inlined into fct_trip and the trip rows are read once.
 
 with trips as (

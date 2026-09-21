@@ -82,8 +82,8 @@ models:
 
   - name: stg_zones
     description: >
-      One row per zone, collapsed from the polygon grain of the seed. 262 zones,
-      including the two unknown codes the TLC publishes.
+      One row per zone, 265 of them, with the seed's integer flags cast to
+      boolean. Nothing else happens here: the ingest owns the geometry.
     columns:
       - name: zone_id
         data_tests:
@@ -102,6 +102,12 @@ models:
         data_tests:
           - not_null
       - name: is_airport
+        data_tests:
+          - not_null
+      - name: has_geometry
+        data_tests:
+          - not_null
+      - name: part_count
         data_tests:
           - not_null
 
