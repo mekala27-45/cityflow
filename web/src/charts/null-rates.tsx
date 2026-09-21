@@ -53,6 +53,16 @@ export function NullRates() {
 
   const ramp = useMemo(() => sequentialRamp(theme), [theme]);
   const periods = useMemo(() => [...new Set(cells.map((c) => c.period))].sort(), [cells]);
+  const labelled = useMemo(() => {
+    const januaries = periods.filter((p) => p.endsWith('-01'));
+    const first = periods[0];
+    // The first period earns a label when it is not already a January and is far
+    // enough from the next one to print without colliding.
+    if (first && !first.endsWith('-01') && (januaries.length === 0 || januaries[0] !== periods[1])) {
+      return [first, ...januaries];
+    }
+    return januaries.length > 0 ? januaries : periods;
+  }, [periods]);
   const columns = useMemo(() => [...new Set(cells.map((c) => c.column_name))].sort(), [cells]);
   const services = useMemo(
     () => SERVICE_ORDER.filter((s) => cells.some((c) => c.service === s)).map((s) => SERVICE_LABEL[s] ?? s),
@@ -87,14 +97,17 @@ export function NullRates() {
         height: services.length * (columns.length * rowHeight + 34) + 60,
         marginLeft: compact ? 108 : 150,
         marginRight: compact ? 10 : 90,
-        marginTop: 26,
+        marginTop: 30,
         marginBottom: 46,
         style: { background: 'transparent' },
         x: {
           domain: periods,
           label: null,
-          tickRotate: compact ? -60 : -40,
-          tickFormat: (p: string) => monthLabel(`${p}-01`),
+          // Forty two rotated month labels overlap into a solid block. Only
+          // January of each year is labelled, plus the first period so the axis
+          // says where the history starts; every other month keeps its tick.
+          ticks: labelled,
+          tickFormat: (p: string) => (p.endsWith('-01') ? p.slice(0, 4) : monthLabel(`${p}-01`)),
           axis: 'top' as const,
         },
         y: { domain: columns, label: null, tickSize: 0 },
@@ -120,7 +133,7 @@ export function NullRates() {
         ],
       };
     },
-    [cells, periods, columns, services, ramp],
+    [cells, periods, labelled, columns, services, ramp],
   );
 
   return (

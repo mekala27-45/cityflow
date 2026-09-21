@@ -90,6 +90,54 @@ async function visitEveryPanel(page: Page): Promise<void> {
   await page.waitForTimeout(400);
 }
 
+/**
+ * Every series a legend names has to put at least one mark on the chart.
+ *
+ * This is the class of bug it catches: the source freshness chart drew three
+ * services on one linear axis, one of them three hundred times the size of the
+ * others, and the largest line ended up outside the drawn area. The legend still
+ * listed it, so the page claimed a series it was not showing. Colours are
+ * compared as computed rgb rather than as attributes, because Plot sets some of
+ * them on a group and lets the children inherit.
+ */
+async function legendSeriesAllDraw(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const failures: string[] = [];
+    const toRgb = (hex: string): string | null => {
+      const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+      if (!match) return null;
+      const value = Number.parseInt(match[1]!, 16);
+      return `rgb(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255})`;
+    };
+
+    for (const card of document.querySelectorAll('[data-testid^="chart-"]')) {
+      const legend = card.querySelector('[data-testid="series-legend"]');
+      if (!legend) continue;
+      if (card.getAttribute('data-view') !== 'chart') continue;
+
+      const painted = new Set<string>();
+      for (const svg of card.querySelectorAll('svg')) {
+        for (const node of svg.querySelectorAll('*')) {
+          const style = getComputedStyle(node);
+          if (style.fill && style.fill !== 'none') painted.add(style.fill);
+          if (style.stroke && style.stroke !== 'none') painted.add(style.stroke);
+        }
+      }
+
+      for (const entry of legend.querySelectorAll('[data-legend-color]')) {
+        const hex = entry.getAttribute('data-legend-color') ?? '';
+        const rgb = toRgb(hex);
+        const name = entry.getAttribute('data-legend-series') ?? hex;
+        if (!rgb) continue;
+        if (!painted.has(rgb)) {
+          failures.push(`${card.getAttribute('data-testid')}: legend names "${name}" (${hex}) and nothing on the chart is drawn in it`);
+        }
+      }
+    }
+    return failures;
+  });
+}
+
 test.describe('cityflow dashboard', () => {
   test('renders every panel, answers queries, filters and toggles', async ({ page }, testInfo) => {
     const consoleErrors: string[] = [];
@@ -213,7 +261,33 @@ test.describe('cityflow dashboard', () => {
       }
     }
 
-    // 5. The table toggle swaps the chart for the rows behind it.
+    // 5. Every series a legend names actually draws.
+    const legendFailures = await legendSeriesAllDraw(page);
+    expect(legendFailures, legendFailures.join('\n')).toHaveLength(0);
+
+    // 6. The chart that motivated the legend check has no legend any more: it is
+    // one frame per service, each direct labelled. Assert the frames instead, so
+    // a service silently dropping out is still caught.
+    const freshness = page.getByTestId('chart-freshness');
+    await freshness.scrollIntoViewIfNeeded();
+    await expect(freshness.locator('svg')).toHaveCount(3);
+    // Plot puts the colour on the group and lets the path inherit, so the check
+    // is on the line mark's geometry: a path with more than one point in it.
+    const drawnFrames = await page.evaluate(() => {
+      const card = document.querySelector('[data-testid="chart-freshness"]');
+      if (!card) return [];
+      return [...card.querySelectorAll('svg')].map((svg) =>
+        [...svg.querySelectorAll('g[aria-label="line"] path')].filter(
+          (path) => ((path.getAttribute('d') ?? '').match(/[ML]/g) ?? []).length > 1,
+        ).length,
+      );
+    });
+    expect(drawnFrames, `frames drawing a line: ${JSON.stringify(drawnFrames)}`).toHaveLength(3);
+    for (const [index, lines] of drawnFrames.entries()) {
+      expect(lines, `frame ${index} draws no line`).toBeGreaterThan(0);
+    }
+
+    // 7. The table toggle swaps the chart for the rows behind it.
     const card = page.getByTestId('chart-zone-pareto');
     await card.scrollIntoViewIfNeeded();
     await expect(card.locator('svg').first()).toBeVisible();
@@ -229,7 +303,7 @@ test.describe('cityflow dashboard', () => {
     expect(offOrigin, `requests left the origin: ${offOrigin.join(' | ')}`).toHaveLength(0);
     expect(consoleErrors, `console errors: ${consoleErrors.join(' | ')}`).toHaveLength(0);
 
-    // 6. Hand the byte counts to the benchmark script.
+    // 8. Hand the byte counts to the benchmark script.
     const finalLog = await page.evaluate(() => window.__cityflowQueryLog);
     const written = writeQueryLog(finalLog?.queries ?? []);
     expect(written, 'no benchmarked query was captured for the byte log').toBeGreaterThanOrEqual(

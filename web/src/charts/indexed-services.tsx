@@ -118,18 +118,26 @@ export function IndexedServices() {
             r: 4.5,
           }),
           // Direct labels as well as the legend: with three series the reader
-          // should never have to carry a colour across the chart.
-          compact
-            ? null
-            : Plot.text(lastByService, {
-                x: 'month',
-                y: 'index',
-                text: (d: IndexedPoint) => SERVICE_LABEL[d.service] ?? d.service,
-                dx: 10,
-                textAnchor: 'start' as const,
-                fontSize: 11,
-                fill: 'var(--text-muted)',
-              }),
+          // should never have to carry a colour across the chart. Indexing puts
+          // all three ends near 100, so the labels are fanned out by rank rather
+          // than printed on top of each other. dy is a constant in Plot, not a
+          // channel, so each offset is its own mark.
+          ...(compact
+            ? []
+            : [...lastByService]
+                .sort((a, b) => b.index - a.index)
+                .map((point, rank, all) =>
+                  Plot.text([point], {
+                    x: 'month',
+                    y: 'index',
+                    text: (d: IndexedPoint) => SERVICE_LABEL[d.service] ?? d.service,
+                    dx: 10,
+                    dy: Math.round((rank - (all.length - 1) / 2) * 13),
+                    textAnchor: 'start' as const,
+                    fontSize: 11,
+                    fill: 'var(--text-muted)',
+                  }),
+                )),
           Plot.crosshairX(points, { x: 'month', y: 'index', color: 'var(--text-faint)' }),
           Plot.tip(
             points,

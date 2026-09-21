@@ -5,10 +5,9 @@ import { useCallback, useMemo } from 'react';
 import { useApp } from '@/components/app-context';
 import { ChartCard } from '@/components/chart-card';
 import { DataTable } from '@/components/data-table';
-import { Legend } from '@/components/legend';
 import { PlotFigure } from '@/components/plot-figure';
+import { compactCount, monthLabel } from '@/lib/format';
 import { useQuery } from '@/hooks/use-query';
-import { monthLabel } from '@/lib/format';
 import { serviceColor, SERVICE_LABEL, SERVICE_ORDER } from '@/lib/palette';
 import { monthWindow, servicePredicate, type Filters } from '@/lib/sql';
 
@@ -43,6 +42,101 @@ where ${monthWindow(filters, 'source_period')}
 order by service, source_period`;
 }
 
+/** Fixed for every row so the three frames line up under one shared x axis. */
+const MARGIN_LEFT = 58;
+const MARGIN_RIGHT = 108;
+
+interface ServiceRowProps {
+  service: string;
+  points: Point[];
+  gaps: Point[];
+  domain: [Date, Date];
+  color: string;
+  showAxis: boolean;
+}
+
+/**
+ * One service, on its own y axis. Three services whose monthly row counts differ
+ * by a factor of three hundred cannot share a linear axis: on one frame the two
+ * smaller ones are flat lines on the baseline and the largest is pressed into
+ * the top margin, which is how a legend entry ends up with no visible line.
+ * Separate frames is not a second axis on one chart, it is three charts.
+ */
+function ServiceRow({ service, points, gaps, domain, color, showAxis }: ServiceRowProps) {
+  const spec = useCallback(
+    (width: number) => ({
+      width,
+      height: showAxis ? 116 : 92,
+      marginLeft: MARGIN_LEFT,
+      marginRight: MARGIN_RIGHT,
+      marginTop: 12,
+      marginBottom: showAxis ? 34 : 10,
+      style: { background: 'transparent' },
+      x: { type: 'utc' as const, label: null, domain, axis: showAxis ? ('bottom' as const) : null },
+      y: {
+        label: null,
+        grid: true,
+        nice: true,
+        zero: true,
+        ticks: 3,
+        tickFormat: (v: number) => compactCount(v),
+      },
+      marks: [
+        Plot.areaY(points, {
+          x: 'period',
+          y: 'clean_rows',
+          z: 'segment',
+          fill: color,
+          fillOpacity: 0.12,
+        }),
+        Plot.lineY(points, {
+          x: 'period',
+          y: 'clean_rows',
+          // z is the segment, not the service, so the line stops at a gap.
+          z: 'segment',
+          stroke: color,
+          strokeWidth: 2,
+          strokeLinecap: 'round' as const,
+        }),
+        Plot.dot(points, {
+          x: 'period',
+          y: 'clean_rows',
+          fill: color,
+          r: 3.2,
+          title: (d: Point) =>
+            `${SERVICE_LABEL[d.service] ?? d.service}, ${monthLabel(d.period.toISOString())}\n${d.clean_rows.toLocaleString('en-US')} rows kept`,
+          tip: true,
+        }),
+        gaps.length > 0
+          ? Plot.ruleX(gaps, { x: 'period', stroke: 'var(--status-warn)', strokeDasharray: '3,3' })
+          : null,
+        // The name sits in the frame's right margin, so identity never depends on
+        // matching a colour to a key somewhere else on the page.
+        Plot.text([points[points.length - 1]].filter(Boolean) as Point[], {
+          x: 'period',
+          y: 'clean_rows',
+          text: () => SERVICE_LABEL[service] ?? service,
+          dx: 10,
+          textAnchor: 'start' as const,
+          fontSize: 11,
+          fill: 'var(--text-muted)',
+        }),
+        Plot.ruleY([0], { stroke: 'var(--axis)' }),
+        Plot.crosshairX(points, { x: 'period', y: 'clean_rows', color: 'var(--text-faint)' }),
+      ].filter(Boolean) as Plot.Markish[],
+    }),
+    [points, gaps, domain, color, service, showAxis],
+  );
+
+  return (
+    <PlotFigure
+      spec={spec}
+      height={showAxis ? 116 : 92}
+      ariaLabel={`Rows kept per source period for ${SERVICE_LABEL[service] ?? service}`}
+    />
+  );
+}
+
 export function SourceFreshness() {
   const { filters, engineReady, theme } = useApp();
 
@@ -75,89 +169,49 @@ export function SourceFreshness() {
     () => SERVICE_ORDER.filter((s) => points.some((p) => p.service === s)),
     [points],
   );
-  const gaps = points.filter((p) => p.has_gap);
-  const backends = [...new Set(rows.map((r) => String(r.backend)))];
+  const gaps = useMemo(() => points.filter((p) => p.has_gap), [points]);
 
-  const spec = useCallback(
-    (width: number) => {
-      const compact = width < 620;
-      return {
-        width,
-        height: compact ? 240 : 300,
-        marginLeft: 62,
-        marginRight: compact ? 16 : 130,
-        marginTop: 16,
-        marginBottom: 34,
-        style: { background: 'transparent' },
-        x: { type: 'utc' as const, label: null },
-        y: { label: 'Rows kept after quarantine', grid: true, nice: true, zero: true },
-        marks: [
-          Plot.lineY(points, {
-            x: 'period',
-            y: 'clean_rows',
-            // z is the segment, not the service, so the line stops at a gap.
-            z: 'segment',
-            stroke: (d: Point) => serviceColor(theme, d.service),
-            strokeWidth: 2,
-            strokeLinecap: 'round' as const,
-          }),
-          Plot.dot(points, {
-            x: 'period',
-            y: 'clean_rows',
-            fill: (d: Point) => serviceColor(theme, d.service),
-            r: 4.5,
-            title: (d: Point) =>
-              `${SERVICE_LABEL[d.service] ?? d.service}, ${monthLabel(d.period.toISOString())}\n${d.clean_rows.toLocaleString('en-US')} rows kept`,
-            tip: true,
-          }),
-          gaps.length > 0
-            ? Plot.ruleX(gaps, { x: 'period', stroke: 'var(--status-warn)', strokeDasharray: '3,3' })
-            : null,
-          compact
-            ? null
-            : Plot.text(
-                services
-                  .map((service) => {
-                    const inService = points.filter((p) => p.service === service);
-                    return inService.reduce<Point | null>((acc, p) => (!acc || p.period > acc.period ? p : acc), null);
-                  })
-                  .filter((p): p is Point => p !== null),
-                {
-                  x: 'period',
-                  y: 'clean_rows',
-                  text: (d: Point) => SERVICE_LABEL[d.service] ?? d.service,
-                  dx: 10,
-                  textAnchor: 'start' as const,
-                  fontSize: 11,
-                  fill: 'var(--text-muted)',
-                },
-              ),
-          Plot.ruleY([0], { stroke: 'var(--axis)' }),
-          Plot.crosshairX(points, { x: 'period', y: 'clean_rows', color: 'var(--text-faint)' }),
-        ].filter(Boolean) as Plot.Markish[],
-      };
-    },
-    [points, gaps, services, theme],
-  );
+  // One x domain across the frames, so a month sits at the same place in all of
+  // them and the rows can be read down as well as across.
+  const domain = useMemo<[Date, Date] | null>(() => {
+    if (points.length === 0) return null;
+    const times = points.map((p) => p.period.getTime());
+    return [new Date(Math.min(...times)), new Date(Math.max(...times))];
+  }, [points]);
+
+  const backends = [...new Set(rows.map((r) => String(r.backend)))];
+  const vintages = [...new Set(rows.map((r) => String(r.vintage)))];
 
   return (
     <ChartCard
       testId="chart-freshness"
       title="Did every month arrive, and how much of it survived?"
-      subtitle={`Rows kept per source period, by service. Backend reported as ${backends.join(', ') || 'unknown'}.`}
-      legend={
-        <Legend
-          items={services.map((service) => ({
-            label: SERVICE_LABEL[service] ?? service,
-            color: serviceColor(theme, service),
-          }))}
-        />
-      }
+      subtitle={`Rows kept per source period, one frame per service because their volumes differ by a factor of three hundred. Backend reported as ${backends.join(', ') || 'unknown'}.`}
       loading={query.loading}
       stale={query.loading && points.length > 0}
       error={query.error}
       durationMs={query.durationMs}
-      chart={<PlotFigure spec={spec} height={260} ariaLabel="Rows kept per source period by service, with gaps drawn as gaps" />}
+      chart={
+        domain === null ? (
+          <p className="py-6 text-center text-xs" style={{ color: 'var(--text-faint)' }}>
+            {query.loading ? 'Reading source freshness.' : 'No source period matches the current filters.'}
+          </p>
+        ) : (
+          <div className="flex flex-col">
+            {services.map((service, index) => (
+              <ServiceRow
+                key={service}
+                service={service}
+                points={points.filter((p) => p.service === service)}
+                gaps={gaps.filter((p) => p.service === service)}
+                domain={domain}
+                color={serviceColor(theme, service)}
+                showAxis={index === services.length - 1}
+              />
+            ))}
+          </div>
+        )
+      }
       table={
         <DataTable
           rows={rows}
@@ -178,6 +232,11 @@ export function SourceFreshness() {
       }
       footnote={
         <>
+          Each frame has its own axis and none of them is a second axis on another: for hire vehicles run
+          about {compactCount(1_892_000)} rows a month against{' '}
+          {compactCount(298_000)} for yellow and {compactCount(5_460)} for green, and on one linear scale
+          the smaller two are a flat line on the baseline. The frames share an x domain, so a month is in
+          the same place in all three.{' '}
           {gaps.length === 0 ? (
             <>
               No month in this window follows a gap, so every line is continuous. If one did, the line
@@ -187,12 +246,12 @@ export function SourceFreshness() {
           ) : (
             <>
               {gaps.length} {gaps.length === 1 ? 'month follows' : 'months follow'} a gap, marked with an
-              amber rule, and the line breaks there rather than sloping across the hole. A segment drawn
-              over a missing month asserts a number nobody read.
+              amber rule, and the line breaks there rather than sloping across the hole.
             </>
           )}{' '}
-          The schema vintage column in the table is what the loader matched the file against, which is how
-          a column that appears partway through the history is handled without a null rate alarm.
+          The {vintages.length} schema vintages in the table are what the loader matched each file
+          against, which is how a column that appears partway through the history is handled without a
+          null rate alarm.
         </>
       }
     />

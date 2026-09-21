@@ -10,13 +10,27 @@ export interface LegendItem {
 /**
  * Shown whenever a chart carries two or more series. Charts with four or fewer
  * also direct label inside the plot, so identity never rests on colour alone.
+ *
+ * Each entry carries its label and colour as data attributes. That is not
+ * decoration: the smoke test reads them and asserts that every series named here
+ * actually draws a mark, which is the check that would have caught a legend
+ * entry whose line had been pushed off the top of its own axis.
  */
 export function Legend({ items }: { items: readonly LegendItem[] }) {
   if (items.length < 2) return null;
   return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+    <ul
+      data-testid="series-legend"
+      className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs"
+      style={{ color: 'var(--text-muted)' }}
+    >
       {items.map((item) => (
-        <li key={item.label} className="flex items-center gap-1.5">
+        <li
+          key={item.label}
+          className="flex items-center gap-1.5"
+          data-legend-series={item.label}
+          data-legend-color={item.color}
+        >
           <span
             aria-hidden
             style={{

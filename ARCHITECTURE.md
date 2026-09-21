@@ -274,16 +274,16 @@ filter, how many row groups could be skipped outright:
 filter that prunes, and the best of them skips
 87 percent of its file's row groups. Latency there
 is a lower bound with no network and no WebAssembly, and it sits at
-5.55 ms at the median p95, 37.26 ms
+5.88 ms at the median p95, 37.19 ms
 at the worst.
 
 Bytes over the wire cannot be measured locally, because a local read is a file
 read. The Playwright smoke test counts the range requests DuckDB-WASM actually
 issues and the bench script folds that log in. Across the panel queries whose
 browser traffic was captured, DuckDB-WASM pulled
-17.6 percent of the bytes those files contain and
+15.9 percent of the bytes those files contain and
 read no file whole. The sharpest single case is the
-Hour of week grid query, which fetched 447.1
+Hour of week grid query, which fetched 448.8
 KB out of a 3.98 MB file. Nothing about that is a
 property of DuckDB. It is a property of having sorted the file on the column the
 query filters. The full table is in [RESULTS.md](RESULTS.md).

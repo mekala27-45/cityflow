@@ -137,14 +137,19 @@ export function ZoneComparisons() {
       title="Does any zone tip differently from its service?"
       subtitle={
         serviceRate === null
-          ? 'Zone tipping rates against the service rate, with Wilson intervals.'
-          : `${SERVICE_LABEL[active] ?? active} tips on ${percent(serviceRate, 1)} of observable trips. The dashed rule is that rate.`
+          ? 'Zone tipping rates against the service rate, each with a 95 percent Wilson interval.'
+          : `${SERVICE_LABEL[active] ?? active} tips on ${percent(serviceRate, 1)} of observable trips. The dashed rule is that rate, the dot is the zone and the bar through it is a 95 percent Wilson interval.`
       }
       legend={
+        // The survivor swatch appears only when something survives. A key that
+        // names a mark the chart does not draw is a promise the chart is not
+        // keeping, and here it would be promising a result that does not exist.
         <Legend
           items={[
             { label: `${SERVICE_LABEL[active] ?? active} zone rate with 95 percent Wilson interval`, color },
-            { label: 'Survives the correction', color: survivorColor },
+            ...(significant > 0
+              ? [{ label: `Survives the correction, ${significant} of ${forService.length}`, color: survivorColor }]
+              : []),
           ]}
         />
       }
