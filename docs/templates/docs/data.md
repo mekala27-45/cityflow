@@ -70,8 +70,8 @@ null and non zero values. The column is all but empty in every file from 2019 to
 February 2021, holds zeros in March, and carries the fee from April 2021, in the
 yellow and the for hire files alike. A build on the old table would have modelled
 every fee charged from April to December 2021 as NULL and published a schema
-change that never happened. The table now dates both vintages to April 2021, and the window opens
-in January 2021 so the real change sits inside it.
+change that never happened. The table now dates both vintages to April 2021,
+and the window opens in January 2021 so the real change sits inside it.
 
 **The generator.** `synthetic` is the other backend: a seeded generator in
 `packages/ingest/src/cityflow_ingest/synthetic.py` that reproduces the schema
