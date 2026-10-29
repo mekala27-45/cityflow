@@ -24,7 +24,8 @@ downloads whole.
 
 ## The finding
 
-Most published New York taxi tip rates are wrong, and the reason is one column.
+A New York taxi tip rate averaged over every payment type is wrong, and the reason
+is one column.
 
 Cash trips record a tip of zero. That is a missing value, not a zero: no tip
 passed through the meter, so the meter has nothing to record. Averaging tip over
