@@ -51,9 +51,13 @@ async function main() {
   await mkdir(OUT, { recursive: true });
 
   const server = await serve();
-  const browser = await chromium.launch({
-    executablePath: "/opt/pw-browsers/chromium",
-  });
+  // Playwright finds the browser it installed, which is how the refresh
+  // workflow's runner has one. A machine that keeps Chromium somewhere else
+  // names it in CITYFLOW_CHROMIUM. The path this used to hard code belonged to
+  // the sandbox the script was written in, and the first full refresh stopped
+  // on it.
+  const executablePath = process.env.CITYFLOW_CHROMIUM;
+  const browser = await chromium.launch(executablePath ? { executablePath } : {});
   const page = await browser.newPage({
     viewport: { width: 1280, height: 900 },
     deviceScaleFactor: 1,
