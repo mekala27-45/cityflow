@@ -521,6 +521,57 @@ def test_a_failed_download_keeps_the_reason_and_leaves_no_partial_file(
     assert list((tmp_path / "raw").glob("*")) == []
 
 
+def test_a_firewall_challenge_is_retried_and_never_saved_as_the_file(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The TLC host answers a busy client with 202 and a challenge page. curl
+    calls that a success, so the registry checks the status and the parquet
+    magic, throws the page away, pauses and tries again."""
+    spec = SourceSpec(service="green", year=2018, month=3)
+    staged = tmp_path / "staged.parquet"
+    _write_row(connection, staged, GREEN_2018_ROW)
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/curl")
+    answers = iter(["202", "202", "200"])
+
+    def fake_run(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        status = next(answers)
+        output = Path(command[command.index("--output") + 1])
+        if status == "200":
+            output.write_bytes(staged.read_bytes())
+        else:
+            output.write_bytes(b"<html>Checking your browser</html>")
+        return subprocess.CompletedProcess(command, 0, status, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    registry = _registry(connection, tmp_path, "tlc")
+    pauses: list[float] = []
+    registry.sleep = pauses.append
+
+    resolved = registry.resolve(spec)
+
+    assert resolved.row_count == 1
+    assert pauses == [60.0, 120.0]
+    assert sorted(p.name for p in (tmp_path / "raw").glob("*")) == [spec.filename]
+
+
+def test_a_firewall_that_never_relents_fails_with_the_reason(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/curl")
+
+    def fake_run(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        Path(command[command.index("--output") + 1]).write_bytes(b"<html>challenge</html>")
+        return subprocess.CompletedProcess(command, 0, "202", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    registry = _registry(connection, tmp_path, "tlc")
+    registry.sleep = lambda seconds: None
+
+    with pytest.raises(SourceUnavailableError, match="refused 4 attempts in a row"):
+        registry.resolve(SourceSpec(service="yellow", year=2024, month=1))
+    assert list((tmp_path / "raw").glob("*")) == []
+
+
 def test_a_downloaded_file_is_described_and_schema_checked(
     connection: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

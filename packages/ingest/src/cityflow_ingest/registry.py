@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,6 +42,26 @@ from cityflow_ingest.vintage import Vintage, compare_columns, resolve_vintage
 
 class SourceUnavailableError(RuntimeError):
     """The file could not be fetched, with the reason preserved."""
+
+
+# How the download treats a refusal that looks like throttling: four attempts,
+# the pauses between them doubling from a minute.
+DOWNLOAD_ATTEMPTS = 4
+DOWNLOAD_PAUSE_SECONDS = 60.0
+THROTTLED_STATUSES = frozenset({"000", "202", "429", "500", "502", "503", "504"})
+PARQUET_MAGIC = b"PAR1"
+
+
+def _is_parquet(path: Path) -> bool:
+    """Starts and ends with the parquet magic number, the cheapest proof that a
+    download is the file rather than a page about it."""
+    if not path.is_file() or path.stat().st_size < 2 * len(PARQUET_MAGIC):
+        return False
+    with path.open("rb") as handle:
+        head = handle.read(len(PARQUET_MAGIC))
+        handle.seek(-len(PARQUET_MAGIC), 2)
+        tail = handle.read(len(PARQUET_MAGIC))
+    return head == PARQUET_MAGIC and tail == PARQUET_MAGIC
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +91,7 @@ class SourceRegistry:
         self.connection = connection
         self.paths = paths or Paths.resolve()
         self.scale = scale
+        self.sleep: Callable[[float], None] = time.sleep
         self._zones: list[ZoneRow] | None = None
         self._zone_tables_installed: set[str] = set()
 
@@ -122,6 +145,12 @@ class SourceRegistry:
         download is written to a temporary name and moved into place only on
         success, so an interrupted run does not leave a truncated parquet that
         reads as a valid file with fewer rows.
+
+        Success means a 200 and a file that starts and ends with the parquet
+        magic number. The TLC host sits behind a firewall that answers a busy
+        client with 202 Accepted and a challenge page, which curl counts as a
+        success and would save under the parquet's name; that, a 429 and a 5xx
+        are retried after a pause that doubles. Anything else fails at once.
         """
         if shutil.which("curl") is None:
             raise SourceUnavailableError(
@@ -130,36 +159,57 @@ class SourceRegistry:
             )
         target.parent.mkdir(parents=True, exist_ok=True)
         partial = target.with_suffix(".parquet.partial")
-        result = subprocess.run(
-            [
-                "curl",
-                "--fail",
-                "--location",
-                "--silent",
-                "--show-error",
-                "--retry",
-                "3",
-                "--retry-delay",
-                "2",
-                "--continue-at",
-                "-",
-                "--output",
-                str(partial),
-                spec.url,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            partial.unlink(missing_ok=True)
-            raise SourceUnavailableError(
-                f"Could not fetch {spec.url}\n"
-                f"curl exit {result.returncode}: {result.stderr.strip()}\n"
-                "If this is an egress policy denial rather than a network "
-                "failure, run with backend: synthetic, which needs no network."
+        for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+            result = subprocess.run(
+                [
+                    "curl",
+                    "--fail",
+                    "--location",
+                    "--silent",
+                    "--show-error",
+                    "--retry",
+                    "3",
+                    "--retry-delay",
+                    "2",
+                    "--continue-at",
+                    "-",
+                    "--write-out",
+                    "%{http_code}",
+                    "--output",
+                    str(partial),
+                    spec.url,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
             )
-        partial.replace(target)
+            status = result.stdout.strip()[-3:]
+            if result.returncode == 0 and status in ("200", "206", "") and _is_parquet(partial):
+                partial.replace(target)
+                return
+            throttled = status in THROTTLED_STATUSES or (
+                result.returncode == 0 and partial.is_file() and not _is_parquet(partial)
+            )
+            if result.returncode == 0 or status in THROTTLED_STATUSES:
+                # Whatever arrived is not the file: a challenge page, an error
+                # body. Resuming onto it would corrupt the next attempt.
+                partial.unlink(missing_ok=True)
+            if not throttled or attempt == DOWNLOAD_ATTEMPTS:
+                partial.unlink(missing_ok=True)
+                detail = result.stderr.strip() or f"HTTP {status or 'unknown'}, not a parquet file"
+                raise SourceUnavailableError(
+                    f"Could not fetch {spec.url}\n"
+                    f"curl exit {result.returncode}: {detail}\n"
+                    + (
+                        f"The host refused {attempt} attempts in a row, which is its "
+                        "firewall throttling this client. Wait, or run from another network.\n"
+                        if throttled
+                        else ""
+                    )
+                    + "If this is an egress policy denial rather than a network "
+                    "failure, run with backend: synthetic, which needs no network."
+                )
+            self.sleep(DOWNLOAD_PAUSE_SECONDS * 2 ** (attempt - 1))
 
     def _generate(self, spec: SourceSpec, vintage: Vintage, target: Path) -> None:
         if spec.service not in self._zone_tables_installed:
