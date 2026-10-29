@@ -8,8 +8,10 @@
 # The committed default is synthetic, for one reason: this repository was built
 # on a machine whose egress policy denies the TLC distribution host, and a
 # default that cannot run on the machine it was written on is not a default.
-# CI is in the same position and always will be. Set CITYFLOW_BACKEND=tlc, or
-# run `make ingest-tlc`, to build the real warehouse.
+# CI is in the same position and always will be. The published figures are the
+# other backend: .github/workflows/refresh.yml sets CITYFLOW_BACKEND=tlc on a
+# runner that can reach the host. Set it, or run `make ingest-tlc`, to build the
+# real warehouse anywhere else that can.
 backend: synthetic
 
 services: [yellow, green, fhvhv]
