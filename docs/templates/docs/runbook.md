@@ -254,6 +254,25 @@ reason: preserving it costs memory that buys nothing here.
 
 Raise the limit only on a machine with more memory, and raise both copies.
 
+### dbt stops with "Cannot switch temporary directory"
+
+**Symptom.** `dbt build` fails a minute or two in, on a warehouse large enough to
+spill, with `Not implemented Error: Cannot switch temporary directory after the
+current one has been used`, raised while opening a connection rather than while
+running a model. The same build on a smaller window passes.
+
+**Why.** dbt-duckdb runs every entry under `settings` in the profile again on
+each new cursor, and with more than one thread it opens new cursors while models
+run. DuckDB refuses to set `temp_directory` once anything has spilled to it, even
+to the path it already has. A build that never spills never meets this, which is
+why every trial passed and the first full build over the published files did
+not.
+
+**What to do.** Keep `temp_directory` under `config_options` in
+`transform/profiles.yml`, which dbt-duckdb passes to DuckDB once, when the
+database opens, and never under `settings`. The memory limit and the other
+settings can stay where they are; setting those again is harmless.
+
 ### A shipped file is over budget
 
 **Symptom, during publish.** `build_all` raises with the file name and its size
