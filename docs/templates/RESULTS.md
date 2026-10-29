@@ -80,13 +80,15 @@ zeroes are real zeroes and they are included.
 
 ## 4. The schema change
 
-The airport fee column is entirely null for {{ n:airport_fee_null_months }}
-service months, through {{ month:airport_fee_last_all_null }}, and starts
-carrying values in {{ month:airport_fee_first_populated }}. The congestion
-surcharge is entirely null for {{ n:congestion_surcharge_null_months }} service
-months and the central business district fee for
-{{ n:cbd_fee_null_months }}, because neither exists in the vintages this window
-covers for the services that do not collect them.
+The airport fee column starts carrying values in
+{{ month:airport_fee_first_populated }}. It is entirely null in
+{{ n:airport_fee_null_months }} service months, the last of them
+{{ month:airport_fee_last_all_null }}, because green never collects it: every
+green month in the window is null, as is every yellow and for hire month before
+the fee. The congestion surcharge, which every vintage in this window collects,
+is entirely null in {{ n:congestion_surcharge_null_months }} service months, and
+the central business district fee, which arrives after the window, in
+{{ n:cbd_fee_null_months }}.
 
 A column a vintage does not have is modelled as NULL, never as zero. Zero would
 say "we charged nothing", the series would run flat into a step, and somebody

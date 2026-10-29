@@ -178,13 +178,14 @@ argument.
 
 **The schema change.** The window spans the month the airport fee is first
 charged. The republished parquet carries an `airport_fee` column back to 2019,
-empty for two years; `mart_null_rates` shows {{ n:airport_fee_null_months }}
-service months where the modelled column is entirely null, then
-{{ month:airport_fee_first_populated }}, where it carries the fee. That month
-came from a census of the column in every published file, after the vintage
-table had first put it nine months later. A column a vintage does not collect is
-modelled as NULL and never as zero, so the series shows a gap rather than a
-step up from nothing.
+all but empty for two years, and `mart_null_rates` shows the modelled column
+carrying the fee from {{ month:airport_fee_first_populated }}. That month came
+from a census of the column in every published file, after the vintage table
+had first put it nine months later. Before it, and in every green month, since
+green never collects the fee, the column is NULL:
+{{ n:airport_fee_null_months }} service months are entirely null. A column a
+vintage does not collect is modelled as NULL and never as zero, so the series
+shows a gap rather than a step up from nothing.
 
 **The gates.** Every one of these fails the build.
 
