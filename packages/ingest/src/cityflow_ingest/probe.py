@@ -143,13 +143,19 @@ def read_footer(
     *,
     retries: int = 3,
     pause: float = 30.0,
+    expected: bool = False,
     sleep: Callable[[float], None] = time.sleep,
 ) -> tuple[list[tuple[Any, ...]], int]:
     """The footer's rows, and how many attempts it took. Raises the last error.
 
     A throttling refusal is retried after a pause that doubles each time. A
-    refusal that means the file is not there is raised at once.
+    refusal that means the file is not there is raised at once, unless the file
+    is expected: the firewall refuses a busy client with the same 403 the
+    storage gives a missing object, and DuckDB keeps only the status, so for a
+    month inside the build window, which the build needs published, a 403 is
+    treated as the firewall and waited out like any other throttling.
     """
+    retried = THROTTLED | NOT_PUBLISHED if expected else THROTTLED
     attempt = 0
     while True:
         attempt += 1
@@ -157,7 +163,7 @@ def read_footer(
             rows = connection.execute(FOOTER_SQL.format(location=_quoted(location))).fetchall()
             return rows, attempt
         except duckdb.Error as error:
-            throttled = bool(status_codes(str(error)) & THROTTLED)
+            throttled = bool(status_codes(str(error)) & retried)
             if not throttled or attempt > retries:
                 raise
             sleep(pause * 2 ** (attempt - 1))
@@ -191,6 +197,7 @@ def probe_source(
     census: str | None = None,
     retries: int = 3,
     pause: float = 30.0,
+    expected: bool = False,
     sleep: Callable[[float], None] = time.sleep,
 ) -> FileProbe:
     """Read one file's footer and compare its columns with its vintage."""
@@ -210,7 +217,12 @@ def probe_source(
 
     try:
         footer, attempts = read_footer(
-            connection, location, retries=0 if local else retries, pause=pause, sleep=sleep
+            connection,
+            location,
+            retries=0 if local else retries,
+            pause=pause,
+            expected=expected,
+            sleep=sleep,
         )
     except duckdb.Error as error:
         message = str(error).strip().splitlines()[0]
@@ -280,10 +292,15 @@ def probe_window(
     *,
     local_dir: Path | None = None,
     census: str | None = None,
+    expected: frozenset[str] = frozenset(),
     spacing: float = 0.5,
     sleep: Callable[[float], None] = time.sleep,
 ) -> list[FileProbe]:
-    """Probe every source, from the TLC host or from a local directory."""
+    """Probe every source, from the TLC host or from a local directory.
+
+    expected names the sources the build needs, as "service:YYYY-MM", whose
+    403 is waited out rather than believed.
+    """
     if local_dir is not None:
         return [
             probe_source(
@@ -299,7 +316,16 @@ def probe_window(
     for index, spec in enumerate(sources):
         if index:
             sleep(spacing)
-        probes.append(probe_source(connection, spec, spec.url, local=False, census=census))
+        probes.append(
+            probe_source(
+                connection,
+                spec,
+                spec.url,
+                local=False,
+                census=census,
+                expected=str(spec) in expected,
+            )
+        )
     return probes
 
 

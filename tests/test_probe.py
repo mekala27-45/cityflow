@@ -507,3 +507,25 @@ def test_a_status_is_read_where_duckdb_writes_one_and_never_from_a_file_name() -
     assert status_codes(dropped) == {0}
     local = "Invalid Input Error: File '/tmp/pytest-202/yellow_tripdata_2024-01.parquet' too small"
     assert status_codes(local) == set()
+
+
+def test_a_403_inside_the_build_window_is_waited_out(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """The firewall refuses with the same 403 the storage gives a missing
+    object. A month the build needs is published, so its 403 is the firewall."""
+    spec = SourceSpec(service="green", year=2024, month=1)
+    path = tmp_path / spec.filename
+    write_file(connection, path, vintage_columns(spec), rows=3)
+    stand_in = _Refusing([GONE, GONE], connection)
+    pauses: list[float] = []
+
+    rows, attempts = read_footer(
+        stand_in,  # type: ignore[arg-type]
+        str(path),
+        pause=5.0,
+        expected=True,
+        sleep=pauses.append,
+    )
+
+    assert rows and attempts == 3 and pauses == [5.0, 10.0]

@@ -155,6 +155,15 @@ jobs:
           if [ -f logs/probe.json ]; then uv run python scripts/annotate_probe.py logs/probe.json; fi
           exit "$status"
 
+      # The probe's footer reads are the one burst of requests in this build.
+      # The first full build was refused its fourth download a minute after
+      # them, with the same 403 a missing file gets, so a full build lets the
+      # window the host's firewall counts requests over pass before it starts
+      # downloading. The downloads themselves are minutes apart.
+      - name: let the host's rate window pass
+        if: env.CITYFLOW_BACKEND == 'tlc' && env.TRIAL_START == ''
+        run: sleep 300
+
       # A synthetic refresh has no shapefile, and needs none: the zone reference
       # and the map geometry this would regenerate are committed, and the stand
       # in CI uses is circles, which must never reach the shipped map.

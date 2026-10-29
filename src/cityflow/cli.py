@@ -227,7 +227,10 @@ def probe(
 
     connection = duckdb.connect()
     try:
-        probes = probe_window(connection, window.sources(), local_dir=local_dir, census=census)
+        in_build = frozenset(str(spec) for spec in config.sources())
+        probes = probe_window(
+            connection, window.sources(), local_dir=local_dir, census=census, expected=in_build
+        )
     finally:
         connection.close()
 
@@ -261,7 +264,6 @@ def probe(
         write_report(probes, json_out)
         console.print(f"Wrote {json_out}")
 
-    in_build = {str(spec) for spec in config.sources()}
     blocking = [p for p in probes if p.source in in_build and not p.readable]
     for item in blocking:
         reason = item.error or f"missing {', '.join(item.missing)}"
