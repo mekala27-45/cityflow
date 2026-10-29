@@ -803,6 +803,7 @@ REQUIRED_CLAIMS = (
     "source_gb",
     "quarantine_rules_defined",
     "quarantine_rules_unfired",
+    "changepoint_largest",
 )
 
 
@@ -1133,5 +1134,10 @@ def test_the_manifest_counts_what_dbt_built_rather_than_asserting_it(
         # with a known right answer to be scored against.
         assert claims["planted_changepoint_miss_days"] == 3
         assert claims["planted_changepoint_detected_change_pct"] == -11.8
+        # The largest annotated shift, written out for the documents.
+        assert claims["changepoint_largest"] == (
+            "in for hire volume on 2024-08-15, down 11.8 percent between the "
+            "four weeks before and the four weeks after"
+        )
     finally:
         changepoints.write_text(original, encoding="utf-8")

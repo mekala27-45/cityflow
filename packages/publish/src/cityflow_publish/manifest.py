@@ -33,6 +33,13 @@ from cityflow_ingest.synthetic import PLANTED_CHANGEPOINT, PLANTED_SHIFT
 
 # Claims are grouped only for readability in the JSON. The gate reads the flat
 # id space, so a claim can move between groups without breaking a document.
+# How a document names a service in running prose.
+SERVICE_NAMES: dict[str, str] = {
+    "yellow": "yellow taxi",
+    "green": "green taxi",
+    "fhvhv": "for hire",
+}
+
 CLAIM_QUERIES: dict[str, str] = {
     # Scale -------------------------------------------------------------------
     "source_rows": "select sum(source_rows) from source_audit",
@@ -321,12 +328,19 @@ def build_manifest(
             for service, entries in sorted(detected.get("detected", {}).items())
             for entry in entries
         ]
+        claims["changepoint_largest"] = "none: no shift in this window cleared the effect floor"
         if annotated:
             service, entry = max(annotated, key=lambda item: abs(float(item[1]["relative_change"])))
+            change = round(float(entry["relative_change"]) * 100, 2)
             claims["changepoint_largest_service"] = service
             claims["changepoint_largest_date"] = entry["date"]
-            claims["changepoint_largest_change_pct"] = round(
-                float(entry["relative_change"]) * 100, 2
+            claims["changepoint_largest_change_pct"] = change
+            # Written out whole, because a document has to say something true
+            # whether or not the window has a shift to name.
+            claims["changepoint_largest"] = (
+                f"in {SERVICE_NAMES.get(service, service)} volume on {entry['date']}, "
+                f"{'up' if change > 0 else 'down'} {abs(change):.1f} percent between the "
+                "four weeks before and the four weeks after"
             )
 
     geojson_path = paths.shipped / "zones.geojson"
