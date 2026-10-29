@@ -296,10 +296,7 @@ changepoint was detected here" is not a finding. "Volume fell by this much and
 stayed there" is one, and it is checkable.
 
 **What the detector found on the published files.** The largest annotated
-shift is in {{ raw:changepoint_largest_service }} volume on
-{{ iso:changepoint_largest_date }}: {{ f1:changepoint_largest_change_pct }}
-percent between the four weeks before and the four weeks after. That is the
-whole claim. The detector says the level moved there and by that much; whether
+shift is {{ raw:changepoint_largest }}. That is the whole claim. The detector says the level moved there and by that much; whether
 a holiday, a storm, a fare change or a policy moved it is a question for the
 calendar, and the panel does not answer it for the reader.
 
