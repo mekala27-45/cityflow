@@ -5,6 +5,11 @@ name: refresh
 # and opens a pull request carrying the updated artifacts and a diff of what
 # moved. A dashboard that keeps itself current is a dashboard that stays alive,
 # and a diff of every published number is the only honest way to update one.
+#
+# A trial is the same build over a shorter window, started by hand with a start
+# month. It reports what it measured as annotations on the run page and opens
+# no pull request, so a change to the pipeline meets the real files in minutes
+# before a full build spends hours on them.
 
 on:
   schedule:
@@ -15,15 +20,38 @@ on:
         description: "tlc or synthetic"
         default: tlc
         type: string
+      start:
+        description: "trial: first month, YYYY-MM. Empty builds the committed window and opens a pull request"
+        default: ""
+        type: string
+      end:
+        description: "trial: last month, YYYY-MM (empty for the start month alone)"
+        default: ""
+        type: string
 
 permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: refresh
+  cancel-in-progress: false
+
+env:
+  CITYFLOW_BACKEND: ${{ inputs.backend || 'tlc' }}
+  TRIAL_START: ${{ inputs.start || '' }}
+  TRIAL_END: ${{ inputs.end || '' }}
+  # rich sizes its tables to the terminal, and a runner has none.
+  COLUMNS: "160"
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 345
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
@@ -31,6 +59,63 @@ jobs:
           version: "0.9.7"
           enable-cache: true
       - run: uv sync --all-extras
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+
+      # The committed window is close to a billion trips, and the warehouse
+      # holds each of them twice, in staging and in the fact table, so the build
+      # needs most of the runner's disk. Everything removed here is a toolchain
+      # this build never touches. The disk log is how a run that ran out of room
+      # says so, and how a run that did not says how close it came.
+      - name: make room for the warehouse
+        run: |
+          set -euo pipefail
+          before="$(df -BG --output=avail / | tail -1 | tr -dc 0-9)"
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/share/swift
+          sudo docker image prune --all --force > /dev/null 2>&1 || true
+          after="$(df -BG --output=avail / | tail -1 | tr -dc 0-9)"
+          memory="$(free -g | awk '/^Mem:/ {print $2}')"
+          echo "::notice title=runner::$(nproc) cpus, ${memory} GB memory, ${before} GB free, ${after} GB after removing unused toolchains"
+          mkdir -p logs
+          nohup bash -c 'while true; do echo "$(date -u +%H:%M:%S) used $(df -BG --output=used / | tail -1 | tr -dc 0-9) warehouse $(du -sBG warehouse 2>/dev/null | cut -f1 | tr -dc 0-9)"; sleep 30; done' > logs/disk.log 2>&1 &
+
+      # The committed limits suit the laptop the repository was built on. DuckDB
+      # has to stay below physical memory (docs/runbook.md), and a runner has
+      # four cores and about fifteen gigabytes, so both copies of the limit are
+      # raised for this run. Neither file goes into the pull request.
+      - name: size DuckDB for the runner
+        run: |
+          set -euo pipefail
+          sed -i -E 's/^duckdb_memory_limit: .*/duckdb_memory_limit: 10GB/; s/^duckdb_threads: .*/duckdb_threads: 4/' config/cityflow.yml
+          sed -i -E 's/^( +)memory_limit: .*/\1memory_limit: 10GB/; s/^( +)threads: .*/\1threads: 4/' transform/profiles.yml
+          grep -E "^duckdb_(memory_limit|threads):" config/cityflow.yml
+          grep -E "^ +(memory_limit|threads):" transform/profiles.yml
+
+      - name: set the trial window
+        if: env.TRIAL_START != ''
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          start = os.environ["TRIAL_START"] + "-01"
+          end = (os.environ["TRIAL_END"] or os.environ["TRIAL_START"]) + "-01"
+          path = Path("config/cityflow.yml")
+          text = path.read_text(encoding="utf-8")
+          for key, value in (("start", start), ("end", end), ("detail_month", start)):
+              text, count = re.subn(rf"(?m)^{key}: .*$", f"{key}: {value}", text)
+              assert count == 1, key
+          path.write_text(text, encoding="utf-8")
+          PY
+          uv run python -c "from cityflow_core import load_config; c = load_config(); print(f'::notice title=trial window::{c.start} to {c.end}, detail month {c.detail_month}, backend {c.backend}')"
 
       - name: keep the current figures for the diff
         run: cp web/public/data/manifest.json /tmp/manifest.before.json
@@ -41,7 +126,7 @@ jobs:
       # the TLC page because the direct path has moved before; if it moves
       # again this step fails here, by name, instead of somewhere downstream.
       - name: fetch the zone shapefile
-        if: ${{ (inputs.backend || 'tlc') == 'tlc' }}
+        if: env.CITYFLOW_BACKEND == 'tlc'
         run: |
           set -euo pipefail
           mkdir -p raw/zones
@@ -55,39 +140,83 @@ jobs:
       # table is wrong about stops the run here, in a minute, rather than after
       # an hour of downloads.
       - name: probe the window
-        if: ${{ (inputs.backend || 'tlc') == 'tlc' }}
+        if: env.CITYFLOW_BACKEND == 'tlc'
         run: |
           set -uo pipefail
-          uv run cityflow probe --json probe.json
+          uv run cityflow probe --json logs/probe.json
           status=$?
-          if [ -f probe.json ]; then uv run python scripts/annotate_probe.py probe.json; fi
+          if [ -f logs/probe.json ]; then uv run python scripts/annotate_probe.py logs/probe.json; fi
           exit "$status"
 
-      - name: rebuild the warehouse
-        env:
-          CITYFLOW_BACKEND: ${{ inputs.backend || 'tlc' }}
+      # A synthetic refresh has no shapefile, and needs none: the zone reference
+      # and the map geometry this would regenerate are committed, and the stand
+      # in CI uses is circles, which must never reach the shipped map.
+      - name: zones
+        if: env.CITYFLOW_BACKEND == 'tlc'
         run: |
           set -euo pipefail
-          # A synthetic refresh has no shapefile, and needs none: the zone
-          # reference and the map geometry it would regenerate are committed,
-          # and the stand in CI uses is circles, which must never reach the
-          # shipped map.
-          if [ -f raw/zones/taxi_zones.shp ]; then uv run cityflow zones; fi
-          uv run cityflow ingest
-          uv run dbt seed --project-dir transform --profiles-dir transform
-          uv run dbt build --project-dir transform --profiles-dir transform
-          uv run cityflow publish
-          uv run cityflow manifest
-          uv run cityflow reconcile
+          uv run cityflow zones 2>&1 | tee logs/01-zones.log
+
+      - name: ingest
+        run: |
+          set -euo pipefail
+          uv run cityflow ingest 2>&1 | tee logs/02-ingest.log
+
+      - name: transform
+        run: |
+          set -euo pipefail
+          uv run dbt seed --project-dir transform --profiles-dir transform 2>&1 | tee logs/03-dbt-seed.log
+          uv run dbt build --project-dir transform --profiles-dir transform 2>&1 | tee logs/04-dbt-build.log
+
+      - name: publish
+        run: |
+          set -euo pipefail
+          uv run cityflow publish 2>&1 | tee logs/05-publish.log
+          uv run cityflow manifest 2>&1 | tee -a logs/05-publish.log
+
+      - name: reconcile
+        run: |
+          set -euo pipefail
+          uv run cityflow reconcile 2>&1 | tee logs/06-reconcile.log
+
+      - name: tableau extracts
+        run: |
+          set -euo pipefail
+          uv run python scripts/build_tableau_extracts.py 2>&1 | tee logs/07-tableau.log
+
+      # The bytes each panel pulls can only be measured in a browser, so the
+      # dashboard is built and its smoke test run before the benchmark folds
+      # that log in, and the manifest is written again to carry it.
+      - name: dashboard, smoke test and benchmark
+        run: |
+          set -euo pipefail
+          (cd web && npm run build && npx playwright install --with-deps chromium && npm run test:smoke) 2>&1 | tee logs/08-web.log
+          uv run python scripts/bench_queries.py --json web/public/data/bench.json 2>&1 | tee logs/09-bench.log
+          uv run cityflow manifest 2>&1 | tee -a logs/09-bench.log
+
+      - name: demo animation
+        if: env.TRIAL_START == ''
+        run: |
+          set -euo pipefail
+          (cd web && node tests/record-demo.mjs tests/demo-frames) 2>&1 | tee logs/10-demo.log
+          uv run python scripts/build_demo_gif.py web/tests/demo-frames docs/demo.gif 2>&1 | tee -a logs/10-demo.log
 
       - name: re-render every document from the new figures
-        run: uv run python scripts/check_published_numbers.py --write
-
-      - name: what moved
-        id: diff
         run: |
           set -euo pipefail
-          uv run python - <<'PY' > /tmp/figure-diff.md
+          uv run python scripts/check_published_numbers.py --write 2>&1 | tee logs/11-docs.log
+
+      - name: the gates the pull request will meet
+        run: |
+          set -euo pipefail
+          uv run python scripts/check_published_numbers.py 2>&1 | tee logs/12-gates.log
+          uv run python scripts/check_shipped_size.py 2>&1 | tee -a logs/12-gates.log
+          uv run python scripts/check_metric_layer.py 2>&1 | tee -a logs/12-gates.log
+
+      - name: what moved
+        run: |
+          set -euo pipefail
+          uv run python - <<'PY' > logs/figure-diff.md
           import json, pathlib
           before = json.loads(pathlib.Path("/tmp/manifest.before.json").read_text())["claims"]
           after = json.loads(pathlib.Path("web/public/data/manifest.json").read_text())["claims"]
@@ -109,16 +238,48 @@ jobs:
           else:
               print("No published figure changed.")
           PY
-          cat /tmp/figure-diff.md
+          cat logs/figure-diff.md
+
+      - name: what it measured
+        if: success()
+        run: |
+          set -euo pipefail
+          uv run python scripts/annotate_logs.py --level notice --tail 45 \
+            logs/02-ingest.log logs/05-publish.log logs/06-reconcile.log logs/09-bench.log
+          uv run python scripts/annotate_logs.py --level notice --tail 400 logs/figure-diff.md
+
+      - name: why it failed
+        if: failure()
+        run: |
+          set -uo pipefail
+          recent="$(ls -t logs/[0-9]*.log 2>/dev/null | head -2)"
+          # shellcheck disable=SC2086
+          uv run python scripts/annotate_logs.py --level error --tail 80 $recent logs/disk.log
+
+      - name: how close the disk came
+        if: always()
+        run: |
+          set -uo pipefail
+          if [ -f logs/disk.log ]; then
+            peak="$(awk '{print $3}' logs/disk.log | sort -n | tail -1)"
+            last="$(tail -1 logs/disk.log)"
+            echo "::notice title=disk::peak ${peak} GB used on /, last sample: ${last}"
+          fi
 
       - uses: peter-evans/create-pull-request@v7
+        if: env.TRIAL_START == ''
         with:
           branch: refresh/monthly
           title: "chore: refresh the warehouse and re-derive every figure"
-          body-path: /tmp/figure-diff.md
+          body-path: logs/figure-diff.md
           commit-message: "chore: monthly refresh of the shipped layer"
           add-paths: |
             web/public/data/**
+            web/tests/query-log.json
+            web/tests/screenshots/**
+            tableau/**
+            data/reference/**
             README.md
             RESULTS.md
+            ARCHITECTURE.md
             docs/**
