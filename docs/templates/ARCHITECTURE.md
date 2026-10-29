@@ -141,9 +141,9 @@ single uniform draw, so a row carries at most one injected defect and each
 realised rate is the configured rate rather than the configured rate conditioned
 on the others not firing.
 
-The second is continuous integration. CI cannot download eight gigabytes of
-parquet on every push, and a pipeline whose tests only run against data CI
-cannot fetch is a pipeline with no tests. The `pipeline` job in `ci.yml` runs
+The second is continuous integration. CI cannot download
+{{ f1:source_gb }} GB of parquet on every push, and a pipeline whose tests only
+run against data CI cannot fetch is a pipeline with no tests. The `pipeline` job in `ci.yml` runs
 the entire build end to end at `--scale 0.002`, into a scratch tree, and then
 asserts with `git diff --exit-code` that the scratch tree did not leak back into
 the repository. That last step matters: a build that rewrote the committed
@@ -167,7 +167,12 @@ stated at length in [docs/data.md](docs/data.md).
 The committed default is `synthetic` for a blunt reason: this repository was
 built on a machine whose egress policy denies the TLC distribution host, and a
 default that cannot run on the machine it was written on is not a default. CI is
-in the same position permanently.
+in the same position permanently. The published build is the other backend, run
+where the host is reachable: `.github/workflows/refresh.yml` sets
+`CITYFLOW_BACKEND=tlc` on a GitHub Actions runner, probes every footer before
+downloading a file, builds the warehouse, re-derives every document and opens a
+pull request with the figures that moved. Nothing it produces is published
+until that pull request is merged.
 
 ## The star schema
 

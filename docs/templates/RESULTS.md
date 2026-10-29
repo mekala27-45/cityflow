@@ -8,11 +8,11 @@ warehouse disagree. Built from commit `{{ raw:commit }}` on
 
 **Provenance.** These figures were measured on the `{{ raw:backend }}` backend
 over {{ n:months }} months, {{ month:window.start }} to
-{{ month:window.end }}. Read
+{{ month:window.end }}: the trip records the TLC publishes,
+{{ n:source_files }} files and {{ f1:source_gb }} GB, read by
+`.github/workflows/refresh.yml` on a GitHub Actions runner. Read
 [the provenance section of docs/data.md](docs/data.md#provenance) before quoting
-any of them. The short version: the generator reproduces the TLC schema and its
-defects, not New York City. Run `make ingest-tlc` and this document re-renders
-itself from the real files.
+any of them, for what the build found in the files before it read a row.
 
 ---
 
@@ -136,12 +136,14 @@ service mix rather than tipping, and every Manhattan zone would come back
 different for the wrong reason.
 
 {{ n:zone_comparisons_naive_significant }} of those comparisons have a raw p
-value at or below 0.05. Testing {{ n:zone_comparisons }} hypotheses at five
-percent would be expected to flag about
-{{ f0:zone_comparisons_expected_by_chance }} by chance alone, which is what
-happened. After Benjamini-Hochberg at q = 0.05,
-{{ n:zone_comparisons_after_bh }} survive. The panel states the comparison count
-on screen and marks only survivors.
+value at or below 0.05, where testing {{ n:zone_comparisons }} hypotheses at
+five percent would flag about {{ f0:zone_comparisons_expected_by_chance }} by
+chance alone. After Benjamini-Hochberg at q = 0.05,
+{{ n:zone_comparisons_after_bh }} survive. At these sample sizes the correction
+is not what separates the zones; a difference of a fraction of a point is
+significant behind a million trips, so the panel shows the size of each
+difference with its interval, states the comparison count, and marks only
+survivors.
 
 **Changepoints.** The search runs on the STL trend component rather than the
 observed series, because observed volume carries a weekly cycle with an
@@ -152,15 +154,15 @@ the sixth Friday in a row. PELT found {{ n:changepoints_found }} candidates;
 {{ n:changepoints_annotated }} on the chart. A detected shift is a change in
 level, not a cause, and the panel says so.
 
-**The one check with a known right answer.** The generator plants a single level
-shift in for hire volume on {{ iso:planted_changepoint }}, a
-{{ f1:planted_shift_pct.fhvhv }} percent step. The detector placed a
-changepoint {{ n:planted_changepoint_miss_days }} day from that date and
-measured the step at
-{{ f2:planted_changepoint_detected_change_pct }} percent over the surrounding
-four weeks. The measured figure is smaller than the planted one because it is a
-twenty eight day mean on either side of a trend that was already moving, which
-is the honest thing for it to be.
+**The largest shift.** The biggest annotated change in level is in
+{{ raw:changepoint_largest_service }} volume on
+{{ iso:changepoint_largest_date }}, {{ f1:changepoint_largest_change_pct }}
+percent over the four weeks either side. The detector says when the level
+moved and by how much; why is a question for the calendar, and the panel leaves
+it there. The detector itself is checked where the answer is known:
+`packages/stats/tests/test_pelt.py` plants changepoints in a series, fails
+unless PELT finds each one close to where it was put, and checks the pruned search against
+unpruned optimal partitioning.
 
 ## 8. The shipped layer
 
@@ -218,23 +220,23 @@ footer.
 
 These are real limits, not a disclaimer.
 
-**The figures are generated, not measured from New York.** Stated at the top,
-in the README, in `docs/data.md` and on the dashboard itself. The pipeline, the
-schema handling, the quarantine rules, the metric layer and the statistics are
-the real thing and run identically on the published files. The volumes, fares
-and geography of demand are not a measurement of the city. The zone boundaries,
-names and boroughs are the real TLC shapefile.
+**The files are the TLC's, and so are their limits.** A trip is what a meter
+or a dispatch system recorded. Cash tips are not recorded at all, which is the
+finding at the top of the README; a zone of 264 or 265 is a location the TLC
+could not resolve; and the for hire files publish no total, so it is rebuilt
+from its parts. The quarantine removes the rows that cannot be trips and names
+the rule that removed each one; it does not try to repair what a meter wrote.
 
-**The generator applies its monthly seasonal factor as a step at each month
-boundary.** Real demand does not jump on the first of the month. This is
-visible to the changepoint search, which is part of why
-{{ n:changepoints_below_effect_floor }} candidates fall below the effect floor.
+**The published files are revised.** The TLC reissues months, and the parquet
+it republished in 2022 carries columns back to years that never collected them.
+This build reads what the files say on the day it runs, and the monthly refresh
+opens a pull request listing every figure that moved, so a revision shows up as
+a diff rather than as a quiet change.
 
-**Zone popularity ordering is judgement.** The busiest zones were named from
-domain knowledge rather than measured, because a hash based ordering put
-Governor's Island fourth busiest in Manhattan and a reader who has stood on a
-corner in this city would see that immediately. The volumes are generated; the
-ordering is a choice, and `docs/data.md` says so.
+**The window opens in the pandemic recovery.** Volume in early 2021 is still
+far below where it settles, so the trend and the changepoints over this window
+are a recovery as much as a pattern, and nothing here is a claim about the years
+either side of it.
 
 **The detail month is yellow and green only.** A month of for hire records does
 not fit inside the per file budget, and splitting it across files to get under

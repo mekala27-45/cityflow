@@ -241,8 +241,10 @@ the only mechanism that would have saved the build, and converts a slow query
 into a crash.
 
 **What to do.** Set `duckdb_memory_limit` in `config/cityflow.yml` below
-physical memory, leaving room for the rest of the machine. This build ran at
-`{{ raw:memory_limit }}`. Then set the same value in `transform/profiles.yml`,
+physical memory, leaving room for the rest of the machine. The published build
+ran at `{{ raw:memory_limit }}` on a runner with fifteen gigabytes, which
+`refresh.yml` sets for its run only; the committed value is for a laptop. Then
+set the same value in `transform/profiles.yml`,
 because the Python side and dbt each open their own connection and there are
 genuinely two places. Check that
 `warehouse/tmp` is on a filesystem with room to spill into; that path is set in
@@ -385,28 +387,64 @@ alters already loaded rows. Never as a way past a failing test.
 
 ## The monthly refresh
 
-`.github/workflows/refresh.yml` runs on a schedule around the middle of the
+`.github/workflows/refresh.yml` runs on a schedule on the twentieth of each
 month, after the TLC has published the previous month, and on manual dispatch
-with a backend input.
+with a backend input. It is also how the published figures were built in the
+first place, since it runs where the TLC host is reachable.
 
 What it does, in order:
 
-1. Copies the current `manifest.json` aside, so there is a before to diff
+1. Frees the runner's unused toolchains and its swap file for the warehouse,
+   which at four years and two copies of every trip needs most of the disk, and
+   starts a log of disk use every thirty seconds.
+2. Raises the DuckDB memory limit and thread count in both copies of the setting
+   for this run only. Neither file goes into the pull request.
+3. Copies the current `manifest.json` aside, so there is a before to diff
    against.
-2. Rebuilds the whole warehouse from the real files:
-   `zones`, `ingest`, `dbt seed`, `dbt build`, `publish`, `manifest`,
-   `reconcile`. If reconcile fails, the job fails and no pull request is opened,
-   which is the correct behaviour: a refresh that cannot prove the shipped layer
-   agrees with the warehouse has nothing to offer.
-3. Re-renders every document from the new manifest.
-4. Diffs the two manifests claim by claim and writes a Markdown table.
-5. Opens a pull request on the branch `refresh/monthly`.
+4. Fetches the zone shapefile, which is not committed.
+5. Runs `cityflow probe` over the window. A month whose columns do not match its
+   vintage stops the run here, in a minute, before any file is downloaded.
+6. Rebuilds the whole warehouse from the real files: `zones`, `ingest`,
+   `dbt seed`, `dbt build`, `publish`, `manifest`, `reconcile`. If reconcile
+   fails, the job fails and no pull request is opened, which is the correct
+   behaviour: a refresh that cannot prove the shipped layer agrees with the
+   warehouse has nothing to offer.
+7. Builds the Tableau extracts, builds the dashboard and runs its smoke test,
+   which measures the bytes each panel pulls, benchmarks every panel query,
+   writes the manifest again to carry the measurements, and records the demo
+   animation.
+8. Re-renders every document from the new manifest and runs the gates the pull
+   request will meet.
+9. Diffs the two manifests claim by claim and writes a Markdown table.
+10. Opens a pull request on the branch `refresh/monthly`.
+
+Every stage tees its output to `logs/`, and the run page carries the evidence as
+annotations: the probe's schema groups and file sizes, the quarantine table, the
+shipped layer, the reconcile verdict, the benchmark and the figure diff on
+success, and the last lines of the stage that broke on failure, with the disk
+log beside them.
+
+**A trial.** Dispatched with a `start` month, and optionally an `end`, the
+workflow builds that window instead, every stage the same, and opens no pull
+request. It exists so a change to the pipeline meets the real files in a few
+minutes before a full build spends an hour on them. The first trial, three
+months over the airport fee boundary as it was then dated, is what showed the
+whole path working on the published files before the first full build ran.
+
+**The host has a firewall.** The TLC distribution answers a client that makes a
+few thousand requests in a few minutes with 202 Accepted and a challenge page,
+then with 403 for files it served an hour before. The probe reads one footer per
+file, slowly, with the HTTP metadata cache on, and the download treats a 202, a
+429 or a 5xx as a reason to wait and retry rather than as a file: `curl --fail`
+counts a 202 as a success, so the registry also checks that what arrived starts
+and ends with the parquet magic number.
 
 **What the pull request contains.** The changed files under
-`web/public/data/**`, plus `README.md`, `RESULTS.md` and `docs/**`. The body is
-the figure diff: one row per claim that moved, with the claim id, the value
-before, the value after and the percentage change, or `No published figure
-changed.` when nothing moved.
+`web/public/data/**`, the query log and the screenshots under `web/tests/`, the
+Tableau extracts, the zone reference, `README.md`, `RESULTS.md`,
+`ARCHITECTURE.md` and `docs/**`. The body is the figure diff: one row per claim
+that moved, with the claim id, the value before, the value after and the
+percentage change, or `No published figure changed.` when nothing moved.
 
 That body is the reason the workflow exists in this shape. A dashboard that
 refreshes itself silently is a dashboard nobody audits. A pull request whose
