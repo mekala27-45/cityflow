@@ -44,12 +44,57 @@ class SourceUnavailableError(RuntimeError):
     """The file could not be fetched, with the reason preserved."""
 
 
-# How the download treats a refusal that looks like throttling: four attempts,
-# the pauses between them doubling from a minute.
-DOWNLOAD_ATTEMPTS = 4
+# How the download treats a refusal that looks like throttling: six attempts,
+# the pauses between them doubling from a minute to a ceiling of five, which
+# outlasts the window a rate rule counts requests over.
+DOWNLOAD_ATTEMPTS = 6
 DOWNLOAD_PAUSE_SECONDS = 60.0
-THROTTLED_STATUSES = frozenset({"000", "202", "429", "500", "502", "503", "504"})
+DOWNLOAD_PAUSE_CEILING = 300.0
 PARQUET_MAGIC = b"PAR1"
+# What the storage behind the distribution says about an object that is not
+# there, as opposed to what the firewall in front of it says about a client.
+MISSING_OBJECT_MARKERS = ("AccessDenied", "NoSuchKey")
+
+
+# curl exits that mean the host was never reached: a proxy, a resolver or a
+# connection refusing outright. curl's own --retry has already tried those, so
+# minutes more of waiting would only delay the message a person needs.
+UNREACHABLE_EXITS = frozenset({5, 6, 7})
+
+
+def classify_refusal(status: str, body: str, curl_exit: int, stderr: str = "") -> str:
+    """What a failed fetch was: missing, refused, firewall, transfer or server.
+
+    The first two are final and the rest are retried. A 403 is missing only when
+    its body is the storage's own AccessDenied document; a 403 with any other
+    body is the firewall, which also answers 202 Accepted with a challenge page.
+    A host that was never reached, including an egress policy refusing the
+    tunnel, is refused rather than retried.
+    """
+    if status in ("404", "410") or (
+        status == "403" and any(marker in body for marker in MISSING_OBJECT_MARKERS)
+    ):
+        return "missing"
+    if status in ("202", "403", "429"):
+        return "firewall"
+    if status == "000" and (curl_exit in UNREACHABLE_EXITS or "CONNECT tunnel failed" in stderr):
+        return "refused"
+    if status == "000" or (curl_exit != 0 and status in ("200", "206")):
+        return "transfer"
+    if status.startswith("5") or status == "416":
+        return "server"
+    return "refused"
+
+
+def _peek(path: Path, size: int = 2048) -> str:
+    """The start of whatever arrived, as text, for a body that is not parquet."""
+    if not path.is_file():
+        return ""
+    with path.open("rb") as handle:
+        head = handle.read(size)
+    if head.startswith(PARQUET_MAGIC):
+        return ""
+    return head.decode("utf-8", errors="replace")
 
 
 def _is_parquet(path: Path) -> bool:
@@ -147,10 +192,16 @@ class SourceRegistry:
         reads as a valid file with fewer rows.
 
         Success means a 200 and a file that starts and ends with the parquet
-        magic number. The TLC host sits behind a firewall that answers a busy
-        client with 202 Accepted and a challenge page, which curl counts as a
-        success and would save under the parquet's name; that, a 429 and a 5xx
-        are retried after a pause that doubles. Anything else fails at once.
+        magic number. Anything else is read for what it is, because the status
+        alone cannot say. The TLC host sits behind a firewall, and a client it
+        thinks is busy gets 202 Accepted with a challenge page, which curl
+        counts as a success, or a 403 that looks exactly like the 403 the
+        storage behind it returns for a month that was never published. What
+        tells them apart is the body: storage answers a missing object with an
+        AccessDenied document, the firewall with CloudFront's own error page.
+        A missing object fails at once. The firewall, a 429, a 5xx or a dropped
+        connection is retried after a pause that doubles, up to five minutes,
+        which is longer than the window the firewall counts requests over.
         """
         if shutil.which("curl") is None:
             raise SourceUnavailableError(
@@ -163,7 +214,6 @@ class SourceRegistry:
             result = subprocess.run(
                 [
                     "curl",
-                    "--fail",
                     "--location",
                     "--silent",
                     "--show-error",
@@ -183,33 +233,38 @@ class SourceRegistry:
                 text=True,
                 check=False,
             )
-            status = result.stdout.strip()[-3:]
-            if result.returncode == 0 and status in ("200", "206", "") and _is_parquet(partial):
+            status = result.stdout.strip()[-3:] or "000"
+            if result.returncode == 0 and status in ("200", "206") and _is_parquet(partial):
                 partial.replace(target)
                 return
-            throttled = status in THROTTLED_STATUSES or (
-                result.returncode == 0 and partial.is_file() and not _is_parquet(partial)
-            )
-            if result.returncode == 0 or status in THROTTLED_STATUSES:
+
+            body = _peek(partial)
+            refusal = classify_refusal(status, body, result.returncode, result.stderr)
+            if refusal != "transfer":
                 # Whatever arrived is not the file: a challenge page, an error
-                # body. Resuming onto it would corrupt the next attempt.
+                # document. Resuming onto it would corrupt the next attempt. A
+                # dropped transfer keeps its bytes, which --continue-at resumes.
                 partial.unlink(missing_ok=True)
-            if not throttled or attempt == DOWNLOAD_ATTEMPTS:
+            if refusal in ("missing", "refused") or attempt == DOWNLOAD_ATTEMPTS:
                 partial.unlink(missing_ok=True)
-                detail = result.stderr.strip() or f"HTTP {status or 'unknown'}, not a parquet file"
+                detail = result.stderr.strip() or f"HTTP {status}"
+                excerpt = " ".join(body.split())[:200]
                 raise SourceUnavailableError(
                     f"Could not fetch {spec.url}\n"
-                    f"curl exit {result.returncode}: {detail}\n"
-                    + (
+                    f"curl exit {result.returncode}, HTTP {status}: {detail}\n"
+                    + (f"The host answered: {excerpt}\n" if excerpt else "")
+                    + {
+                        "missing": "The object is not there: this month is not published.\n",
+                        "refused": "The host refused the request outright.\n",
+                    }.get(
+                        refusal,
                         f"The host refused {attempt} attempts in a row, which is its "
-                        "firewall throttling this client. Wait, or run from another network.\n"
-                        if throttled
-                        else ""
+                        "firewall throttling this client. Wait, or run from another network.\n",
                     )
                     + "If this is an egress policy denial rather than a network "
                     "failure, run with backend: synthetic, which needs no network."
                 )
-            self.sleep(DOWNLOAD_PAUSE_SECONDS * 2 ** (attempt - 1))
+            self.sleep(min(DOWNLOAD_PAUSE_SECONDS * 2 ** (attempt - 1), DOWNLOAD_PAUSE_CEILING))
 
     def _generate(self, spec: SourceSpec, vintage: Vintage, target: Path) -> None:
         if spec.service not in self._zone_tables_installed:
