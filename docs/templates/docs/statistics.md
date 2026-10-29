@@ -295,30 +295,23 @@ mean of the four weeks after, the relative change and its direction. "A
 changepoint was detected here" is not a finding. "Volume fell by this much and
 stayed there" is one, and it is checkable.
 
-**The one check with a known right answer.** Everything else in this document
-is an argument. This is a measurement. The generator plants a single level shift
-in for hire volume on {{ iso:planted_changepoint }}, a step of
-{{ f1:planted_shift_pct.fhvhv }} percent. The detector placed a changepoint
-{{ n:planted_changepoint_miss_days }} day away from that date, and measured the
-step over the surrounding four weeks at
-{{ f2:planted_changepoint_detected_change_pct }} percent.
+**What the detector found on the published files.** The largest annotated
+shift is {{ raw:changepoint_largest }}. That is the whole claim. The detector says the level moved there and by that much; whether
+a holiday, a storm, a fare change or a policy moved it is a question for the
+calendar, and the panel does not answer it for the reader.
 
-Both halves of that result are worth reading. The location is essentially exact,
-which is what an STL trend plus an L2 cost should give on a step of this size.
-The magnitude is smaller than what was planted, and it should be: it is a
-twenty eight day mean either side of a point on a smoothed trend that was
-already drifting, so the window straddles the transition and the drift works
-against the step. A detector that reported the planted figure back exactly would
-be a detector that had been tuned until it did.
-
-**And a caution about the rest of the annotations on generated data.** With the
-exception of the planted shift, the annotated changepoints on this build cluster
-within a few days of month boundaries. That is not a finding about anything. The
-generator applies its monthly seasonal factor as a step at midnight on the first
-of each month, so the trend genuinely does jump there, and a changepoint
-detector is precisely the instrument that will notice. It is documented as a
-known artefact in [data.md](data.md), it accounts for a large share of the
-candidates that fall below the effect floor, and it is the clearest illustration
+**Where the answer is known.** A method that is only ever run on data with no
+known answer is a method nobody has checked. `packages/stats/tests/test_pelt.py`
+plants changepoints in a series, fails unless PELT finds each one close to
+where it was put, and checks the pruned search against unpruned optimal
+partitioning, which is the test that carries the weight: pruning that changed
+the answer would pass the first check and fail the second. The generator also
+plants one level shift in for hire volume on {{ iso:planted_changepoint }}, so a
+synthetic build has a known answer on the chart. It also applies its monthly
+seasonal factor as a step at each month boundary, which a changepoint detector
+is built to notice; on the generator most annotations sit within a few days of
+a first of the month for that reason alone, and on the published files, which
+have no such artefact, they do not. That contrast is the clearest illustration
 in this repository of why a generated fixture is good for testing a method and
 useless for drawing a conclusion.
 
@@ -389,26 +382,22 @@ differed at all, {{ f0:zone_comparisons_expected_by_chance }} would be expected
 to cross it from noise alone. Surviving Benjamini-Hochberg:
 {{ n:zone_comparisons_after_bh }}.
 
-That is the correct answer, and it is worth sitting with rather than explaining
-away. This build ran on the `{{ raw:backend }}` backend, where a trip's tip is
-drawn from a distribution that depends on the payment channel and the fare and
-on nothing else: it has no zone term at all. There is no zone level tipping
-effect in this data, so there is nothing for the procedure to find, and it finds
-nothing.
+That is the opposite of what the same procedure does on the generator, and both
+answers are correct. The generator draws a trip's tip from the payment channel
+and the fare and nothing else, so it has no zone term at all, and on it the
+procedure finds next to nothing, the surviving set empty. The published files
+are a city, where who rides from a zone, where to and how they pay all vary by
+neighbourhood, and the zones genuinely differ.
 
-Notice that the uncorrected count comes in below the count expected by chance
-rather than on top of it. That is what a family of true nulls looks like, with
-one wrinkle worth naming: each zone is tested against a reference rate estimated
-from the same data, including that zone's own trips, which makes the test
-slightly conservative for the zones large enough to move their own reference.
-The effect is small and it runs in the safe direction, but a reader comparing
-the two counts should know it is there rather than reading the gap as evidence
-of anything.
-
-The panel showing an empty surviving set is the statistics working. A panel that
-instead highlighted every uncorrected result would be handing a reader
-{{ n:zone_comparisons_naive_significant }} coin flips and calling them
-neighbourhoods.
+What changes with real data is what significance is worth. The family mixes
+very different sample sizes: the median for hire zone has millions of
+observable trips, the median green zone a few hundred. Behind the largest, a
+difference of a few hundredths of a point clears any threshold, so a surviving
+comparison means the difference is real, not that it is large. The panel
+therefore leads with the size of each zone's difference from its service's rate
+and the Wilson interval around it, and keeps the corrected verdict beside it
+rather than in front of it. A panel that ranked zones by p value at these counts
+would be ranking them by how many trips they have.
 
 ## The palette validator
 

@@ -11,81 +11,23 @@
         "model.cityflow.dim_zone"
       ]
     },
-    "model.cityflow.mart_source_freshness": {
-      "name": "mart_source_freshness",
+    "model.cityflow.stg_quarantine": {
+      "name": "stg_quarantine",
       "type": "model",
-      "layer": "marts",
-      "description": "One row per service and source period, with what was read and when. has_gap marks a month whose predecessor is missing, so the panel can break the line instead of drawing a smooth slope across a hole in the source.",
+      "layer": "staging",
+      "description": "Rows the ingest removed, by rule and by source period.",
       "depends_on": [
-        "model.cityflow.stg_source_audit"
+        "source.cityflow.warehouse.quarantine_log"
       ]
     },
-    "model.cityflow.fct_trip": {
-      "name": "fct_trip",
+    "model.cityflow.stg_source_audit": {
+      "name": "stg_source_audit",
       "type": "model",
-      "layer": "marts",
-      "description": "One row per trip, incremental by source period. Every measure the dashboard shows starts here.",
+      "layer": "staging",
+      "description": "What the ingest actually read, per service and source period.",
       "depends_on": [
-        "model.cityflow.int_trip_geography"
+        "source.cityflow.warehouse.source_audit"
       ]
-    },
-    "model.cityflow.mart_quarantine": {
-      "name": "mart_quarantine",
-      "type": "model",
-      "layer": "marts",
-      "description": "What the ingest removed, by rule, service and month, as a share of the rows the source held. The share is the comparable number.",
-      "depends_on": [
-        "model.cityflow.stg_quarantine"
-      ]
-    },
-    "model.cityflow.dim_hour": {
-      "name": "dim_hour",
-      "type": "model",
-      "layer": "marts",
-      "description": "Twenty four rows. The daypart bands are the ones the peak surcharge uses.",
-      "depends_on": []
-    },
-    "model.cityflow.mart_null_rates": {
-      "name": "mart_null_rates",
-      "type": "model",
-      "layer": "marts",
-      "description": "Null share per watched column, service and month. A null share of exactly 1.0 followed by a drop is a column being introduced, not a data quality problem: congestion_surcharge appears in 2019-02, airport_fee in 2022-01, cbd_congestion_fee in 2025-01, and passenger_count and ratecode_id are absent from the high volume for hire vehicle schema entirely. What should raise an alarm is a share that moves in the middle of a service's history, because that is a source that changed shape without announcing it.",
-      "depends_on": [
-        "model.cityflow.stg_trips"
-      ]
-    },
-    "model.cityflow.dim_ratecode": {
-      "name": "dim_ratecode",
-      "type": "model",
-      "layer": "marts",
-      "description": "The TLC rate codes 1 to 6 and the unknown code 99, plus member 0 for not applicable. For hire vehicle trips carry no rate code at all, so without an explicit member for that they would join to nothing and vanish from every rate code breakdown while still counting in the total. is_flat_rate marks the two negotiated airport rates, JFK and Newark, where the fare is fixed and the meter is not the story.",
-      "depends_on": []
-    },
-    "model.cityflow.dim_zone": {
-      "name": "dim_zone",
-      "type": "model",
-      "layer": "marts",
-      "description": "One row per TLC taxi zone, 265 of them, 260 with a polygon. Two separate things make a zone unmappable and the map has to tell them apart. is_unknown marks zones 264 and 265, the TLC's codes for a location that was never resolved: real trips, real money, no place. has_geometry false with is_unknown false marks zones 57, 104 and 105, real places the trip records can name that the shapefile does not carry. Anything drawn on a map filters on has_geometry; anything reporting unresolved location reads is_unknown. Neither is ever dropped from a total.",
-      "depends_on": [
-        "model.cityflow.stg_zones"
-      ]
-    },
-    "model.cityflow.dim_date": {
-      "name": "dim_date",
-      "type": "model",
-      "layer": "marts",
-      "description": "One row per day in the build window, generated from the fact so it cannot fall behind it. day_of_week is 0 for Sunday, matching DuckDB's dayofweek, so nobody has to convert between two conventions.",
-      "depends_on": [
-        "model.cityflow.stg_trips",
-        "seed.cityflow.holiday"
-      ]
-    },
-    "model.cityflow.dim_service": {
-      "name": "dim_service",
-      "type": "model",
-      "layer": "marts",
-      "description": "The three services the warehouse covers, written out rather than discovered.",
-      "depends_on": []
     },
     "model.cityflow.stg_zones": {
       "name": "stg_zones",
@@ -105,29 +47,80 @@
         "source.cityflow.warehouse.stg_trip"
       ]
     },
-    "model.cityflow.stg_quarantine": {
-      "name": "stg_quarantine",
+    "model.cityflow.fct_trip": {
+      "name": "fct_trip",
       "type": "model",
-      "layer": "staging",
-      "description": "Rows the ingest removed, by rule and by source period.",
+      "layer": "marts",
+      "description": "One row per trip, incremental by source period. Every measure the dashboard shows starts here.",
       "depends_on": [
-        "source.cityflow.warehouse.quarantine_log"
+        "model.cityflow.int_trip_geography"
       ]
     },
-    "model.cityflow.stg_source_audit": {
-      "name": "stg_source_audit",
+    "model.cityflow.dim_ratecode": {
+      "name": "dim_ratecode",
       "type": "model",
-      "layer": "staging",
-      "description": "What the ingest actually read, per service and source period.",
+      "layer": "marts",
+      "description": "The TLC rate codes 1 to 6 and the unknown code 99, plus member 0 for not applicable. For hire vehicle trips carry no rate code at all, so without an explicit member for that they would join to nothing and vanish from every rate code breakdown while still counting in the total. is_flat_rate marks the two negotiated airport rates, JFK and Newark, where the fare is fixed and the meter is not the story.",
+      "depends_on": []
+    },
+    "model.cityflow.mart_null_rates": {
+      "name": "mart_null_rates",
+      "type": "model",
+      "layer": "marts",
+      "description": "Null share per watched column, service and month. A null share of exactly 1.0 followed by a drop is a column being introduced, not a data quality problem: congestion_surcharge appears in 2019-02, airport_fee in 2021-04, cbd_congestion_fee in 2025-01, and passenger_count and ratecode_id are absent from the high volume for hire vehicle schema entirely. What should raise an alarm is a share that moves in the middle of a service's history, because that is a source that changed shape without announcing it.",
       "depends_on": [
-        "source.cityflow.warehouse.source_audit"
+        "model.cityflow.stg_trips"
       ]
     },
-    "seed.cityflow.holiday": {
-      "name": "holiday",
-      "type": "seed",
-      "layer": "holiday",
-      "description": "Holiday dates with the name each one is published under. Generated from the statutory rules once and committed, so the list is reviewable in a diff rather than recomputed on every run. A fixed date holiday that falls at a weekend contributes a second row for the observed date, because the day offices and schools close is the day street demand moves.",
+    "model.cityflow.dim_date": {
+      "name": "dim_date",
+      "type": "model",
+      "layer": "marts",
+      "description": "One row per day in the build window, generated from the fact so it cannot fall behind it. day_of_week is 0 for Sunday, matching DuckDB's dayofweek, so nobody has to convert between two conventions.",
+      "depends_on": [
+        "model.cityflow.stg_trips",
+        "seed.cityflow.holiday"
+      ]
+    },
+    "model.cityflow.mart_source_freshness": {
+      "name": "mart_source_freshness",
+      "type": "model",
+      "layer": "marts",
+      "description": "One row per service and source period, with what was read and when. has_gap marks a month whose predecessor is missing, so the panel can break the line instead of drawing a smooth slope across a hole in the source.",
+      "depends_on": [
+        "model.cityflow.stg_source_audit"
+      ]
+    },
+    "model.cityflow.dim_zone": {
+      "name": "dim_zone",
+      "type": "model",
+      "layer": "marts",
+      "description": "One row per TLC taxi zone, 265 of them, 260 with a polygon. Two separate things make a zone unmappable and the map has to tell them apart. is_unknown marks zones 264 and 265, the TLC's codes for a location that was never resolved: real trips, real money, no place. has_geometry false with is_unknown false marks zones 57, 104 and 105, real places the trip records can name that the shapefile does not carry. Anything drawn on a map filters on has_geometry; anything reporting unresolved location reads is_unknown. Neither is ever dropped from a total.",
+      "depends_on": [
+        "model.cityflow.stg_zones"
+      ]
+    },
+    "model.cityflow.dim_service": {
+      "name": "dim_service",
+      "type": "model",
+      "layer": "marts",
+      "description": "The three services the warehouse covers, written out rather than discovered.",
+      "depends_on": []
+    },
+    "model.cityflow.mart_quarantine": {
+      "name": "mart_quarantine",
+      "type": "model",
+      "layer": "marts",
+      "description": "What the ingest removed, by rule, service and month, as a share of the rows the source held. The share is the comparable number.",
+      "depends_on": [
+        "model.cityflow.stg_quarantine"
+      ]
+    },
+    "model.cityflow.dim_hour": {
+      "name": "dim_hour",
+      "type": "model",
+      "layer": "marts",
+      "description": "Twenty four rows. The daypart bands are the ones the peak surcharge uses.",
       "depends_on": []
     },
     "seed.cityflow.zone_lookup": {
@@ -135,6 +128,13 @@
       "type": "seed",
       "layer": "zone_lookup",
       "description": "The TLC taxi zone reference, one row per zone id 1 to 265. Named zone_lookup rather than dim_zone because dbt resolves seeds and models in one namespace and the dimension of that name is built in the marts layer. Generated by the ingest from the published shapefile, which dissolves the polygons of a multi part zone into one.",
+      "depends_on": []
+    },
+    "seed.cityflow.holiday": {
+      "name": "holiday",
+      "type": "seed",
+      "layer": "holiday",
+      "description": "Holiday dates with the name each one is published under. Generated from the statutory rules once and committed, so the list is reviewable in a diff rather than recomputed on every run. A fixed date holiday that falls at a weekend contributes a second row for the observed date, because the day offices and schools close is the day street demand moves.",
       "depends_on": []
     },
     "source.cityflow.warehouse.stg_trip": {

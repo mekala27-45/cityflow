@@ -3,7 +3,7 @@
 import { useApp } from './app-context';
 import { compactCount, monthLabel } from '@/lib/format';
 
-export const REPO_PROVENANCE_URL = 'https://github.com/mekala27-45/cityflow#data-provenance';
+export const REPO_PROVENANCE_URL = 'https://github.com/mekala27-45/cityflow#where-the-numbers-come-from';
 
 /**
  * manifest.json decides what this says. The backend and the window are read from
@@ -72,8 +72,19 @@ export function ProvenanceBanner({ testId = 'provenance-banner' }: { testId?: st
             </>
           ) : (
             <>
-              Figures on this page are measured on source marked{' '}
-              <code style={{ color: 'var(--text)' }}>{backend}</code> in mart_source_freshness.
+              Every figure on this page is measured on the trip records the New York City Taxi and
+              Limousine Commission publishes, read from its own parquet files, source{' '}
+              <code style={{ color: 'var(--text)' }}>{backend}</code> in mart_source_freshness.{' '}
+              <a
+                href={REPO_PROVENANCE_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2"
+                style={{ color: 'var(--focus)' }}
+              >
+                Where the numbers come from
+              </a>
+              .
             </>
           )}
         </p>
@@ -112,7 +123,7 @@ export function ProvenancePill() {
       title={
         synthetic
           ? 'Figures are measured on a seeded generator, not on the published TLC files.'
-          : `Source backend: ${backend}`
+          : `Measured on the trip records the TLC publishes, source ${backend}`
       }
     >
       <span
@@ -124,7 +135,7 @@ export function ProvenancePill() {
           background: synthetic ? 'var(--status-warn)' : 'var(--status-ok)',
         }}
       />
-      {synthetic ? 'Synthetic source, not the published TLC files' : `Source: ${backend}`}
+      {synthetic ? 'Synthetic source, not the published TLC files' : 'Source: the published TLC files'}
     </a>
   );
 }

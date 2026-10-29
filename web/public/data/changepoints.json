@@ -3,99 +3,268 @@
   "min_size_days": 14,
   "min_effect": 0.06,
   "found": 35,
-  "below_effect_floor": 25,
+  "below_effect_floor": 4,
   "searched_on": "the STL trend component, not the observed series",
   "stl_period": 7,
   "detected": {
     "fhvhv": [
       {
-        "date": "2022-02-03",
-        "index": 217,
-        "before_mean": 62298.8,
-        "after_mean": 67097.9,
-        "relative_change": 0.077,
+        "date": "2021-03-02",
+        "index": 60,
+        "before_mean": 420815.2,
+        "after_mean": 462553.0,
+        "relative_change": 0.0992,
         "direction": "up"
       },
       {
-        "date": "2022-02-28",
-        "index": 242,
-        "before_mean": 67418.7,
-        "after_mean": 61454.2,
-        "relative_change": -0.0885,
-        "direction": "down"
-      },
-      {
-        "date": "2023-03-03",
-        "index": 610,
-        "before_mean": 67064.7,
-        "after_mean": 60785.6,
-        "relative_change": -0.0936,
-        "direction": "down"
-      },
-      {
-        "date": "2024-02-29",
-        "index": 973,
-        "before_mean": 65165.4,
-        "after_mean": 60645.1,
-        "relative_change": -0.0694,
-        "direction": "down"
-      },
-      {
-        "date": "2024-08-11",
-        "index": 1137,
-        "before_mean": 63449.9,
-        "after_mean": 58634.2,
-        "relative_change": -0.0759,
-        "direction": "down"
-      },
-      {
-        "date": "2024-09-01",
-        "index": 1158,
-        "before_mean": 59669.8,
-        "after_mean": 63503.2,
-        "relative_change": 0.0642,
+        "date": "2021-10-13",
+        "index": 285,
+        "before_mean": 502081.9,
+        "after_mean": 534506.9,
+        "relative_change": 0.0646,
         "direction": "up"
+      },
+      {
+        "date": "2021-12-21",
+        "index": 354,
+        "before_mean": 550661.5,
+        "after_mean": 444342.0,
+        "relative_change": -0.1931,
+        "direction": "down"
+      },
+      {
+        "date": "2022-01-27",
+        "index": 391,
+        "before_mean": 471760.2,
+        "after_mean": 548890.3,
+        "relative_change": 0.1635,
+        "direction": "up"
+      },
+      {
+        "date": "2022-12-23",
+        "index": 721,
+        "before_mean": 637804.1,
+        "after_mean": 567433.6,
+        "relative_change": -0.1103,
+        "direction": "down"
+      },
+      {
+        "date": "2023-01-15",
+        "index": 744,
+        "before_mean": 567846.4,
+        "after_mean": 633771.8,
+        "relative_change": 0.1161,
+        "direction": "up"
+      },
+      {
+        "date": "2023-12-23",
+        "index": 1086,
+        "before_mean": 685702.7,
+        "after_mean": 598999.5,
+        "relative_change": -0.1264,
+        "direction": "down"
+      },
+      {
+        "date": "2024-01-12",
+        "index": 1106,
+        "before_mean": 607173.0,
+        "after_mean": 659471.1,
+        "relative_change": 0.0861,
+        "direction": "up"
+      },
+      {
+        "date": "2024-06-28",
+        "index": 1274,
+        "before_mean": 668625.4,
+        "after_mean": 625990.3,
+        "relative_change": -0.0638,
+        "direction": "down"
       }
     ],
-    "green": [],
-    "yellow": [
+    "green": [
       {
-        "date": "2022-02-04",
-        "index": 218,
-        "before_mean": 9819.5,
-        "after_mean": 10549.9,
-        "relative_change": 0.0744,
+        "date": "2021-09-13",
+        "index": 256,
+        "before_mean": 2615.9,
+        "after_mean": 3241.7,
+        "relative_change": 0.2392,
         "direction": "up"
       },
       {
-        "date": "2022-02-25",
-        "index": 239,
-        "before_mean": 10508.5,
-        "after_mean": 9825.9,
-        "relative_change": -0.065,
+        "date": "2021-12-23",
+        "index": 357,
+        "before_mean": 3306.5,
+        "after_mean": 1945.4,
+        "relative_change": -0.4117,
         "direction": "down"
       },
       {
-        "date": "2023-01-31",
-        "index": 579,
-        "before_mean": 9931.0,
-        "after_mean": 10625.7,
-        "relative_change": 0.07,
+        "date": "2022-06-27",
+        "index": 543,
+        "before_mean": 2250.9,
+        "after_mean": 1923.0,
+        "relative_change": -0.1456,
+        "direction": "down"
+      },
+      {
+        "date": "2023-12-22",
+        "index": 1086,
+        "before_mean": 2077.8,
+        "after_mean": 1605.7,
+        "relative_change": -0.2272,
+        "direction": "down"
+      },
+      {
+        "date": "2024-12-19",
+        "index": 1449,
+        "before_mean": 1712.6,
+        "after_mean": 1249.8,
+        "relative_change": -0.2702,
+        "direction": "down"
+      }
+    ],
+    "yellow": [
+      {
+        "date": "2021-02-20",
+        "index": 51,
+        "before_mean": 44462.0,
+        "after_mean": 56397.3,
+        "relative_change": 0.2684,
         "direction": "up"
       },
       {
-        "date": "2023-03-01",
-        "index": 608,
-        "before_mean": 10644.2,
-        "after_mean": 9584.6,
-        "relative_change": -0.0995,
+        "date": "2021-04-10",
+        "index": 100,
+        "before_mean": 61785.8,
+        "after_mean": 72483.4,
+        "relative_change": 0.1731,
+        "direction": "up"
+      },
+      {
+        "date": "2021-05-19",
+        "index": 139,
+        "before_mean": 76078.2,
+        "after_mean": 83682.6,
+        "relative_change": 0.1,
+        "direction": "up"
+      },
+      {
+        "date": "2021-09-29",
+        "index": 272,
+        "before_mean": 93017.0,
+        "after_mean": 105638.8,
+        "relative_change": 0.1357,
+        "direction": "up"
+      },
+      {
+        "date": "2021-12-20",
+        "index": 354,
+        "before_mean": 110891.3,
+        "after_mean": 72315.2,
+        "relative_change": -0.3479,
+        "direction": "down"
+      },
+      {
+        "date": "2022-01-26",
+        "index": 391,
+        "before_mean": 75467.5,
+        "after_mean": 95612.4,
+        "relative_change": 0.2669,
+        "direction": "up"
+      },
+      {
+        "date": "2022-02-23",
+        "index": 419,
+        "before_mean": 95612.4,
+        "after_mean": 110011.4,
+        "relative_change": 0.1506,
+        "direction": "up"
+      },
+      {
+        "date": "2022-06-27",
+        "index": 543,
+        "before_mean": 112840.0,
+        "after_mean": 98605.8,
+        "relative_change": -0.1261,
+        "direction": "down"
+      },
+      {
+        "date": "2022-09-06",
+        "index": 614,
+        "before_mean": 95756.1,
+        "after_mean": 103536.2,
+        "relative_change": 0.0812,
+        "direction": "up"
+      },
+      {
+        "date": "2022-12-22",
+        "index": 721,
+        "before_mean": 110859.8,
+        "after_mean": 87661.2,
+        "relative_change": -0.2093,
+        "direction": "down"
+      },
+      {
+        "date": "2023-06-27",
+        "index": 908,
+        "before_mean": 106430.8,
+        "after_mean": 89779.9,
+        "relative_change": -0.1564,
+        "direction": "down"
+      },
+      {
+        "date": "2023-09-07",
+        "index": 980,
+        "before_mean": 85564.6,
+        "after_mean": 91992.8,
+        "relative_change": 0.0751,
+        "direction": "up"
+      },
+      {
+        "date": "2023-12-22",
+        "index": 1086,
+        "before_mean": 112301.2,
+        "after_mean": 83852.5,
+        "relative_change": -0.2533,
+        "direction": "down"
+      },
+      {
+        "date": "2024-02-28",
+        "index": 1154,
+        "before_mean": 97614.5,
+        "after_mean": 109494.9,
+        "relative_change": 0.1217,
+        "direction": "up"
+      },
+      {
+        "date": "2024-07-04",
+        "index": 1281,
+        "before_mean": 108936.8,
+        "after_mean": 96386.6,
+        "relative_change": -0.1152,
+        "direction": "down"
+      },
+      {
+        "date": "2024-09-06",
+        "index": 1345,
+        "before_mean": 89826.1,
+        "after_mean": 117034.4,
+        "relative_change": 0.3029,
+        "direction": "up"
+      },
+      {
+        "date": "2024-12-18",
+        "index": 1448,
+        "before_mean": 120833.1,
+        "after_mean": 93613.3,
+        "relative_change": -0.2253,
         "direction": "down"
       }
     ]
   },
   "generated_for_window": [
-    "2021-07-01",
+    "2021-01-01",
     "2024-12-01"
   ],
-  "generated_at": "2026-09-21T21:10:10.040557+00:00"
+  "generated_at": "2026-10-29T07:32:41.975179+00:00"
 }

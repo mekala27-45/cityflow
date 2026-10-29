@@ -1,7 +1,7 @@
 # cityflow
 
 An analytics warehouse and a browser side dashboard over New York City taxi and
-for hire vehicle trip records. 92,208,701 trips are modelled into a
+for hire vehicle trip records. 1,004,405,361 trips are modelled into a
 tested star schema with dbt, every published metric is defined once in a version
 controlled metric layer, and a conformed mart layer is queried live in the
 browser by DuckDB-WASM over HTTP range requests.
@@ -16,7 +16,7 @@ No key, no server, no setup. The demo is a static page.
 ![The hour of week grid and the flow map, both answering live queries](docs/demo.gif)
 
 Every frame above is a query. The grid is
-124,446 published rows read by HTTP range
+131,115 published rows read by HTTP range
 request, and each filter click runs SQL in the browser against parquet it never
 downloads whole.
 
@@ -24,22 +24,23 @@ downloads whole.
 
 ## The finding
 
-Most published New York taxi tip rates are wrong, and the reason is one column.
+A New York taxi tip rate averaged over every payment type is wrong, and the reason
+is one column.
 
 Cash trips record a tip of zero. That is a missing value, not a zero: no tip
 passed through the meter, so the meter has nothing to record. Averaging tip over
 fare across all payment types therefore divides the tips that were observed by a
-population that includes 3,402,805 trips that could not have been.
+population that includes 25,920,891 trips that could not have been.
 
 Over the yellow and green trips in this warehouse:
 
 | | tip as a share of fare |
 | --- | --- |
-| Averaged over every payment type | 14.15 percent |
-| Card payments only, where a tip is observable | 20.35 percent |
+| Averaged over every payment type | 20.26 percent |
+| Card payments only, where a tip is observable | 25.93 percent |
 
 The naive figure understates the real one by
-43.9 percent of itself. `tip_pct` is modelled
+28.0 percent of itself. `tip_pct` is modelled
 as NULL wherever the payment channel cannot record a tip, never as zero, and
 three dbt tests hold that line. For hire vehicle trips are settled in the app,
 so their zeroes are real zeroes and they are included. The reasoning is in
@@ -51,33 +52,39 @@ so their zeroes are real zeroes and they are included. The reasoning is in
 
 **Read this before quoting any figure in this repository.**
 
+Every figure in this repository was measured on the `tlc` backend:
+the trip record parquet the New York City Taxi and Limousine Commission
+publishes, 144 files and 24.1 GB over
+48 months, January 2021 to December 2024.
+1,012,369,990 source rows were read, 7,964,629 of them
+quarantined by name, and 1,004,405,361 modelled.
+
+The machine this repository was written on cannot reach the TLC distribution
+host, so the published build runs on a GitHub Actions runner that can.
+[`refresh.yml`](.github/workflows/refresh.yml) reads the footer of every file in
+the window before downloading any of them, rebuilds the warehouse, re-derives
+every figure in every document and opens a pull request whose description lists
+each figure that moved. Reading those footers first is how the build learned two
+things no fixture could have told it, both in
+[docs/data.md](docs/data.md#provenance): the yellow files spell one column
+differently from February 2023, and the airport fee was charged from April 2021,
+nine months before the date this pipeline's vintage table first gave it.
+
 The pipeline has two ingest backends behind one interface, and they take the
 same path through the vintage mapping, the normalizer, the quarantine rules and
 the warehouse.
 
 - `tlc` reads the published TLC parquet over HTTPS. It is what `make
-  ingest-tlc` runs.
+  ingest-tlc` runs, and what every published figure comes from.
 - `synthetic` runs a seeded generator that reproduces the TLC schema **and its
   defects**: per vintage column drift, cash trips recording a tip of zero,
   timestamps outside the file's own month, unknown zones 264 and 265, negative
   durations, exact duplicates, and surcharge columns null before the month they
-  were introduced.
+  were introduced. CI builds it end to end on every push, at a scale that
+  finishes in a minute, and every quarantine rule is tested against it, because
+  a rule needs a fixture that contains its defect at a known rate.
 
-Every figure in this repository was measured on the `synthetic` backend.
-The generator exists because this repository was built on a machine whose egress
-policy denies the TLC distribution host, because continuous integration cannot
-download eight gigabytes on every push, and because every quarantine rule needs
-a fixture that actually contains the defect it claims to catch at a realistic
-rate and scale.
-
-What the generator reproduces is the schema and the defects. What it does not
-reproduce is real trip volumes, real fares, or any finding about New York City.
-The tip rate gap above is a property of how payment channels record tips, which
-the generator models deliberately; it is not a measurement of New York. The zone
-geometry, the zone names and the boroughs are the real TLC shapefile.
-
-Run `make ingest-tlc` and then `make pipeline`, and every figure in every
-document in this repository is re-derived from the real files by the claim gate.
+The zone geometry, the zone names and the boroughs are the real TLC shapefile.
 Nothing here is typed by hand.
 
 ---
@@ -89,20 +96,18 @@ Nothing here is typed by hand.
   TLC trip record parquet, yellow + green + for hire, or the seeded generator
         |  ingest        per vintage schema mapping, quarantine, one month at a time
         v
-  warehouse.duckdb  (local, gitignored, 92,208,701.0 rows at trip grain)
+  warehouse.duckdb       local, gitignored, every trip at trip grain
         |  dbt staging   typing, derivation, the quarantine marts
         |  dbt marts     star schema, fct_trip incremental by month
         v
   +--------------------------------------------------------------+
-  |  fct_trip                 the grain, 92,208,701 rows |
+  |  fct_trip, the grain                                          |
   |  dim_zone  dim_date  dim_hour  dim_service  dim_ratecode      |
   +---------------------------+----------------------------------+
                               |  publish
                               v
   +--------------------------------------------------------------+
   |  SHIPPED LAYER, what the browser can reach                    |
-  |  23 files, 67.4 MB total,    |
-  |  largest 31.8 MB                        |
   |  additive components only, never a rate                       |
   +---------------------------+----------------------------------+
                               |  HTTP range requests
@@ -113,9 +118,10 @@ Nothing here is typed by hand.
   +--------------------------------------------------------------+
 ```
 
-92,208,701 rows at trip grain are summarized into
-67.4 MB that the browser queries, which is
-1,368,518 source rows for every megabyte shipped. The detail lives in
+1,004,405,361 rows at trip grain are summarized into
+150.2 MB that the browser queries, 23 files
+with the largest at 55.2 MB, which is
+6,688,925 trips for every megabyte shipped. The detail lives in
 the warehouse and the browser queries conformed aggregates. That is not a
 workaround for a static host, it is how BI works, and
 [ARCHITECTURE.md](ARCHITECTURE.md) says why at length because it is the question
@@ -143,35 +149,43 @@ warehouse is a document about the code rather than a constraint on it. A second
 gate scans the dashboard source and fails if it computes a metric the layer
 already defines.
 
-**The quarantine.** 425,876 rows,
-0.4597 percent of source, caught by
-9 named rules. Nothing is deleted. Every rejected
+**The quarantine.** 7,964,629 rows,
+0.7867 percent of source, caught by
+12 named rules. Nothing is deleted. Every rejected
 row is logged with the rule that caught it, the counts are on the dashboard, and
 the identity `source rows = clean rows + sum(quarantine counts)` is asserted
 after every month. A pipeline that cannot say where its rejected rows went does
 not get to call itself clean.
 
 **Unknown zones.** Zone ids 264 and 265 mean the TLC could not determine the
-location. They carry 1,574,148 trips,
-1.71 percent of the total. They are kept, flagged,
+location. They carry 36,477,941 trips,
+3.63 percent of the total. They are kept, flagged,
 and excluded from geographic aggregates only, with the exclusion and its share
 stated on the map. Dropping them is the easy version and it biases every total.
 
 **The statistics.** Wilson intervals on every proportion, not the normal
 approximation. STL with gap detection. PELT changepoints written out rather than
-imported. And 757 zone comparisons corrected with
-Benjamini-Hochberg: 25 of them look
-significant at an uncorrected five percent threshold, which is what you would
-expect from 38 by chance alone, and
-0 survive the correction. The panel states the
-comparison count on screen.
+imported. And 738 zone comparisons corrected with
+Benjamini-Hochberg: 706 of them are
+significant at an uncorrected five percent threshold, against
+37 that would be by chance alone, and
+705 survive the correction. The zones genuinely
+differ, most of them by points rather than fractions of a point, and behind the
+busiest, with millions of observable trips, even a difference of a few
+hundredths of a point is significant. So the panel puts the size of each
+difference and its interval first and the comparison count on screen. [docs/statistics.md](docs/statistics.md) has the
+argument.
 
-**The schema change.** The window spans the month the airport fee column appears
-in the published files. `mart_null_rates` shows
-54 service months where the column is entirely
-null, then January 2022, where it starts carrying
-values. A column that does not exist yet is modelled as NULL and never as zero,
-so the series shows a gap rather than a step up from nothing.
+**The schema change.** The window spans the month the airport fee is first
+charged. The republished parquet carries an `airport_fee` column back to 2019,
+all but empty for two years, and `mart_null_rates` shows the modelled column
+carrying the fee from April 2021. That month came
+from a census of the column in every published file, after the vintage table
+had first put it nine months later. Before it, and in every green month, since
+green never collects the fee, the column is NULL:
+54 service months are entirely null. A column a
+vintage does not collect is modelled as NULL and never as zero, so the series
+shows a gap rather than a step up from nothing.
 
 **The gates.** Every one of these fails the build.
 
