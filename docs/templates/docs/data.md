@@ -58,16 +58,17 @@ two things no fixture could have shown.
 The first is a spelling. From February 2023 the yellow files call the airport
 fee `Airport_fee`. DuckDB binds column names without regard to case, so the
 normalizer read it, but the schema check compared names exactly and would have
-stopped a real build at that month, an hour of downloads in. The check now
-compares names the way DuckDB binds them and still reports the difference, and
-the generator writes the published spelling, so CI meets it too.
+stopped a real build at that month, more than halfway through its downloads.
+The check now compares names the way DuckDB binds them and still reports the
+difference, and the generator writes the published spelling, so CI meets it
+too.
 
 The second is a date. The vintage table had the airport fee arriving in January
 2022. The footers showed the column present, and
 filled, through 2021, so the probe grew a census: `--census airport_fee` reads
 that one column of every file, through projection pushdown, and counts its non
 null and non zero values. The column is all but empty in every file from 2019 to
-February 2021, holds zeros in March, and carries the fee from April 2021, in the
+February 2021, holds only zeros in March, and carries the fee from April 2021, in the
 yellow and the for hire files alike. A build on the old table would have modelled
 every fee charged from April to December 2021 as NULL and published a schema
 change that never happened. The table now dates both vintages to April 2021,
