@@ -154,15 +154,13 @@ the sixth Friday in a row. PELT found {{ n:changepoints_found }} candidates;
 {{ n:changepoints_annotated }} on the chart. A detected shift is a change in
 level, not a cause, and the panel says so.
 
-**The largest shift.** The biggest annotated change in level is in
-{{ raw:changepoint_largest_service }} volume on
-{{ iso:changepoint_largest_date }}, {{ f1:changepoint_largest_change_pct }}
-percent over the four weeks either side. The detector says when the level
-moved and by how much; why is a question for the calendar, and the panel leaves
-it there. The detector itself is checked where the answer is known:
+**The largest shift.** The biggest annotated change in level is
+{{ raw:changepoint_largest }}. The detector says when the level moved and by
+how much; why is a question for the calendar, and the panel leaves it there.
+The detector itself is checked where the answer is known:
 `packages/stats/tests/test_pelt.py` plants changepoints in a series, fails
-unless PELT finds each one close to where it was put, and checks the pruned search against
-unpruned optimal partitioning.
+unless PELT finds each one close to where it was put, and checks the pruned
+search against unpruned optimal partitioning.
 
 ## 8. The shipped layer
 
