@@ -17,10 +17,10 @@ files, not the month the rule took effect and not the month the column first
 appears in them. All three differ, and the files are what we read. The airport
 fee shows why: the parquet the TLC republished in 2022 carries an airport_fee
 column back to 2019, empty until March 2021, zero in that month, and charged
-from April 2021. This table first dated it to January 2022, from the data
-dictionary; a census of the column in every published file (`cityflow probe
---census airport_fee`) moved it to April 2021 before a real build could null
-nine months of fees the riders paid.
+from April 2021. This table first dated it to January 2022; a census of the
+column in every published file (`cityflow probe --census airport_fee`) moved it
+to April 2021 before a real build could model every fee charged from April to
+December 2021 as NULL.
 """
 
 from __future__ import annotations

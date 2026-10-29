@@ -19,8 +19,8 @@ services: [yellow, green, fhvhv]
 # puts a real schema change in front of the null rate panel and stops
 # assert_surcharge_null_before_introduction passing vacuously. A window inside
 # one vintage proves nothing about the vintage mapping. The month comes from a
-# census of the column in every published file, not from the data dictionary,
-# which put it in January 2022 (see vintage.py).
+# census of the column in every published file, which moved it from the January
+# 2022 this table first gave it (see vintage.py).
 start: 2021-01-01
 end: 2024-12-01
 
