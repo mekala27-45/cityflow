@@ -52,10 +52,12 @@ jobs:
           args=()
           if [ -n "$START" ]; then args+=(--start "$START"); fi
           if [ -n "$END" ]; then args+=(--end "$END"); fi
-          uv run cityflow probe "${args[@]}" --json probe.json
-          status=$?
+          uv run cityflow probe "${args[@]}" --json probe.json 2>&1 | tee probe.log
+          status=${PIPESTATUS[0]}
           if [ -f probe.json ]; then
             uv run python scripts/annotate_probe.py probe.json
+          else
+            uv run python scripts/annotate_logs.py --level error --tail 60 probe.log
           fi
           exit "$status"
 

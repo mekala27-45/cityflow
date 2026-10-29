@@ -143,8 +143,8 @@ jobs:
         if: env.CITYFLOW_BACKEND == 'tlc'
         run: |
           set -uo pipefail
-          uv run cityflow probe --json logs/probe.json
-          status=$?
+          uv run cityflow probe --json logs/probe.json 2>&1 | tee logs/00-probe.log
+          status=${PIPESTATUS[0]}
           if [ -f logs/probe.json ]; then uv run python scripts/annotate_probe.py logs/probe.json; fi
           exit "$status"
 
