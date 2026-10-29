@@ -6,10 +6,12 @@
 --   never resolved. They carry real trips and real money. They are kept,
 --   flagged, and excluded from anything drawn on a map, never from a total.
 --
---   has_geometry false with is_unknown false: zones 57, 104 and 105, which are
---   real places a trip record can name but which have no polygon in the
---   published shapefile. The trip's location is known, it simply cannot be
---   drawn. Counting these as unknown would overstate the unresolved share.
+--   has_geometry false with is_unknown false: a real place a trip record can
+--   name that the shapefile has no polygon for. The TLC's current file has a
+--   polygon for every id from 1 to 263, so on it there are none; an older copy
+--   had none for 57, 104 and 105. The trip's location is known, it simply
+--   cannot be drawn. Counting these as unknown would overstate the unresolved
+--   share.
 
 with zones as (
 

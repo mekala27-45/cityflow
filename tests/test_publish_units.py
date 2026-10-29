@@ -7,14 +7,23 @@ percent coverage: the lowest in the repository, and the one module where a
 silent fan out had already shipped once.
 
 They now run against a fixture built by `scripts/build_zone_fixture.py` from
-the committed zone reference, carrying the same 263 polygon records over the
-same 260 zone ids and the same defects, and additionally against the real file
-whenever it is present. A fixture that reproduces the defect is worth more than
-a skip that reports green.
+the committed zone reference, and additionally against the real file whenever
+it is present. A fixture that reproduces the defect is worth more than a skip
+that reports green.
+
+The defect itself now lives in a second reference. The shapefile the TLC
+publishes today has one polygon for every id from 1 to 263, so a fixture built
+from the current reference gives the dissolve nothing to do. An older copy, the
+one the first builds read, held the same 263 records over 260 ids: two polygons
+under Corona's 56, three under the islands' 103, none for 57, 104 and 105.
+`tests/fixtures/zone_reference_older_copy.csv` is that copy's reference, and
+the tests of the dissolve and of the zones with no polygon run against it, so
+the guards stay tested whichever copy the next build meets.
 """
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 
@@ -39,19 +48,32 @@ from cityflow_publish.geometry import (
 
 REPO = Path(__file__).resolve().parent.parent
 SHAPEFILE_STEM = REPO / "raw" / "zones" / "taxi_zones"
+OLDER_REFERENCE = REPO / "tests" / "fixtures" / "zone_reference_older_copy.csv"
 
 
 @pytest.fixture(scope="module")
 def fixture_stem(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """A shapefile carrying the real file's structure and none of its shapes.
 
-    Built from the committed zone reference, so it holds the same 263 polygon
-    records over the same 260 zone ids, the same two zones in several pieces,
-    and the same five ids with no polygon.
+    Built from the committed zone reference, so it holds the same polygon
+    records over the same zone ids as the shapefile the last build read.
     """
     stem = tmp_path_factory.mktemp("zone-fixture") / "taxi_zones"
     build_zone_fixture.build(REPO / "data" / "reference" / "dim_zone.csv", stem)
     return stem
+
+
+@pytest.fixture(scope="module")
+def older_prepared(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[list[Zone], dict[str, float]]:
+    """The older copy's layout: 263 records over 260 ids, two zones in several
+    pieces and three ids with no polygon, which is what the dissolve and the
+    geometryless rows exist for."""
+    stem = tmp_path_factory.mktemp("older-zone-fixture") / "taxi_zones"
+    build_zone_fixture.build(OLDER_REFERENCE, stem)
+    out = tmp_path_factory.mktemp("older-zones") / "zones.geojson"
+    return prepare_zones(stem, out)
 
 
 @pytest.fixture(scope="module", params=["fixture", "real"])
@@ -93,12 +115,12 @@ def geojson_path(shapefile_stem: Path, tmp_path_factory: pytest.TempPathFactory)
 
 
 def test_multi_part_zones_are_dissolved_to_one_row(
-    prepared: tuple[list[Zone], dict[str, float]],
+    older_prepared: tuple[list[Zone], dict[str, float]],
 ) -> None:
-    """The shapefile holds more polygon records than zones. Left alone the
+    """The older copy holds more polygon records than zones. Left alone the
     duplicates fan out any join on zone id and inflate every count downstream,
     and the failure is silent."""
-    zones, stats = prepared
+    zones, stats = older_prepared
     ids = [zone.zone_id for zone in zones]
     assert len(ids) == len(set(ids)), "a zone id was emitted twice"
 
@@ -110,11 +132,11 @@ def test_multi_part_zones_are_dissolved_to_one_row(
 
 
 def test_the_geometryless_zones_are_emitted_rather_than_lost(
-    prepared: tuple[list[Zone], dict[str, float]],
+    older_prepared: tuple[list[Zone], dict[str, float]],
 ) -> None:
-    """Real places a trip record can name that have no polygon. Counting them
-    as unknown would overstate the unresolved share."""
-    zones, stats = prepared
+    """Real places a trip record can name that the older copy has no polygon
+    for. Counting them as unknown would overstate the unresolved share."""
+    zones, stats = older_prepared
     by_id = {zone.zone_id: zone for zone in zones}
     for zone_id, (name, borough) in GEOMETRYLESS_ZONE_IDS.items():
         zone = by_id[zone_id]
@@ -148,6 +170,73 @@ def test_the_unknown_codes_are_kept_and_flagged(
     assert stats["zones_total"] == (
         stats["zones_with_geometry"] + stats["zones_without_geometry"] + len(UNKNOWN_ZONE_IDS)
     )
+
+
+def test_every_zone_id_appears_exactly_once(
+    prepared: tuple[list[Zone], dict[str, float]],
+) -> None:
+    """Whichever copy of the shapefile a build meets, dim_zone carries every id
+    the TLC publishes, once."""
+    zones, stats = prepared
+    assert sorted(zone.zone_id for zone in zones) == list(range(1, 266))
+    assert stats["zones_total"] == 265
+
+
+def test_the_shape_counts_describe_what_was_emitted(
+    prepared: tuple[list[Zone], dict[str, float]],
+    older_prepared: tuple[list[Zone], dict[str, float]],
+) -> None:
+    """The counts the zones command prints come from the rows it wrote, not
+    from a list of the ids an older copy of the file was missing. Against the
+    current file that list names three ids that all have a polygon, and a count
+    read off the list reported three zones without geometry where there were
+    none."""
+    for zones, stats in (prepared, older_prepared):
+        assert stats["zones_without_geometry"] == sum(
+            1 for zone in zones if not zone.has_geometry and not zone.is_unknown
+        )
+        assert stats["zones_dissolved_from_multiple_parts"] == sum(
+            1 for zone in zones if zone.part_count > 1
+        )
+        assert sum(zone.part_count for zone in zones) == stats["polygon_records_read"]
+
+
+def test_one_polygon_per_id_needs_no_dissolve_and_leaves_no_id_unshaped(
+    tmp_path: Path,
+) -> None:
+    """The layout the TLC publishes today: a polygon for every id from 1 to
+    263. Built here from the older reference by giving Corona and the islands
+    one polygon per id, so the test does not depend on which reference is
+    committed."""
+    with OLDER_REFERENCE.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    by_id = {int(row["zone_id"]): row for row in rows}
+    for zone_id, source_id, shift in ((57, 56, 0.004), (104, 103, 0.003), (105, 103, -0.003)):
+        source = by_id[source_id]
+        by_id[zone_id].update(
+            has_geometry="1",
+            part_count="1",
+            centroid_lon=str(float(source["centroid_lon"]) + shift),
+            centroid_lat=source["centroid_lat"],
+            area_sq_mi=source["area_sq_mi"],
+        )
+    for zone_id in (56, 103):
+        by_id[zone_id]["part_count"] = "1"
+    reference = tmp_path / "dim_zone.csv"
+    with reference.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(by_id[zone_id] for zone_id in sorted(by_id))
+    stem = tmp_path / "current" / "taxi_zones"
+    build_zone_fixture.build(reference, stem)
+
+    zones, stats = prepare_zones(stem, tmp_path / "zones.geojson")
+    assert stats["polygon_records_read"] == 263
+    assert stats["zones_with_geometry"] == 263
+    assert stats["zones_dissolved_from_multiple_parts"] == 0
+    assert stats["zones_without_geometry"] == 0
+    shaped = {zone.zone_id for zone in zones if zone.has_geometry}
+    assert set(GEOMETRYLESS_ZONE_IDS) <= shaped
 
 
 def test_the_airport_zones_are_flagged_from_the_id_list(
@@ -194,8 +283,9 @@ def test_the_geojson_carries_one_feature_per_mappable_zone(geojson_path: Path) -
 
     features = collection["features"]
     assert len({f["id"] for f in features}) == len(features)
-    for zone_id in (*UNKNOWN_ZONE_IDS, *GEOMETRYLESS_ZONE_IDS):
-        assert zone_id not in {f["id"] for f in features}
+    drawn = {f["id"] for f in features}
+    for zone_id in UNKNOWN_ZONE_IDS:
+        assert zone_id not in drawn
 
     sample = features[0]
     assert set(sample["properties"]) == {"zone_id", "zone", "borough", "service_zone"}

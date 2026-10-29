@@ -111,7 +111,7 @@ def wilson_interval_array(
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Wilson intervals for many groups at once.
 
-    The map redraws intervals for all 260 zones on every filter change, so the
+    The map redraws intervals for every mapped zone on every filter change, so the
     scalar function in a comprehension is the wrong shape of code here.
 
     Zones with no trips come back as NaN in all three arrays rather than as a

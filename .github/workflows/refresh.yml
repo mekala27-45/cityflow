@@ -295,6 +295,7 @@ jobs:
             web/tests/screenshots/**
             tableau/**
             data/reference/**
+            transform/seeds/zone_lookup.csv
             README.md
             RESULTS.md
             ARCHITECTURE.md

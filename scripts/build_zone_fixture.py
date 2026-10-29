@@ -10,16 +10,22 @@ real one, the same way the trip generator reproduces the published parquet's
 schema and defects. It is not a copy of the geometry and it is not a map of New
 York. Every polygon here is a circle.
 
-What it reproduces, read out of `data/reference/dim_zone.csv` rather than
+What it reproduces, read out of the reference it is given rather than
 restated here so the two cannot drift:
 
-  * one record per polygon, not one per zone, so the file holds 263 records
-    over 260 zone ids and any per record loop fans out;
-  * the two zones that appear more than once, Corona and the harbour islands,
-    with their parts separated so the dissolve has real work to do;
-  * the five zone ids with no polygon at all, by leaving them out;
+  * one record per polygon, not one per zone, so a zone the reference records
+    in several parts appears that many times and any per record loop fans out;
+  * those parts separated, so the dissolve has real work to do;
+  * the zone ids with no polygon at all, by leaving them out;
   * rings dense enough that simplification has something to remove, which is
     what makes the tolerance a measurable quantity rather than a decoration.
+
+`data/reference/dim_zone.csv` describes the shapefile the last build read. The
+TLC's current file has one polygon for every id from 1 to 263, so its fixture
+has no defect to reproduce. `tests/fixtures/zone_reference_older_copy.csv`
+describes the older copy the first builds read, 263 records over 260 ids with
+Corona and the harbour islands in several parts and ids 57, 104 and 105 absent,
+and the dissolve tests are built from that one.
 
 What it does not reproduce is the shape of any zone, the borders between them,
 or anything else a reader could mistake for cartography.

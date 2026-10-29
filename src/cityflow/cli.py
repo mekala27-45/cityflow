@@ -40,7 +40,13 @@ def _config(backend: str | None) -> CityflowConfig:
 def zones(
     tolerance: Annotated[float, typer.Option(help="Simplification tolerance in feet.")] = 150.0,
 ) -> None:
-    """Build the zone GeoJSON and dim_zone reference from the TLC shapefile."""
+    """Build the zone GeoJSON and dim_zone reference from the TLC shapefile.
+
+    The reference is written twice: to data/reference, where people and the
+    fixture builder read it, and to the dbt seed the warehouse's dim_zone is
+    built from. Writing only the first let a build draw one shapefile's
+    polygons while its dimension described another's.
+    """
     from cityflow_publish.geometry import prepare_zones
 
     paths = Paths.resolve()
@@ -89,11 +95,15 @@ def zones(
                 ]
             )
 
+    seed = paths.transform / "seeds" / "zone_lookup.csv"
+    seed.parent.mkdir(parents=True, exist_ok=True)
+    seed.write_bytes(reference.read_bytes())
+
     table = Table(title="Zone geometry", show_header=False)
     for key, value in stats.items():
         table.add_row(key.replace("_", " "), f"{value:,.2f}")
     console.print(table)
-    console.print(f"Wrote {reference} and {paths.shipped / 'zones.geojson'}")
+    console.print(f"Wrote {reference}, {seed} and {paths.shipped / 'zones.geojson'}")
 
 
 @app.command()

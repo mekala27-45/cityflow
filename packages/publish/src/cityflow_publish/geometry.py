@@ -50,17 +50,20 @@ COORDINATE_PRECISION = 6
 # The TLC's codes for a trip whose zone could not be determined.
 UNKNOWN_ZONE_IDS = (264, 265)
 
-# The shapefile holds 263 polygon records covering 260 distinct zone ids. Two
-# zones are split across several records (Corona is two polygons, the three
-# harbour islands are three), and three ids that the trip records can and do
-# reference have no polygon at all because the mapping folded them into their
-# neighbours. Left alone, the duplicates fan out a join on zone id and the
-# absent ids vanish from an inner one, and both failures are silent.
+# The shapefile the TLC publishes today carries one polygon record for every
+# zone id from 1 to 263. An older copy of it, the one the first builds of this
+# repository read, did not: it held the same 263 records over only 260 ids.
+# Two polygons carried Corona's id 56 and three carried the harbour islands' id
+# 103, while ids 57, 104 and 105, which name the same places, had none. Left
+# alone, the repeated ids fan out a join on zone id and the absent ones vanish
+# from an inner one, and both failures are silent.
 #
-# So the polygons are dissolved by zone id, and the three geometryless ids are
-# emitted as rows carrying their name and borough with has_geometry false. They
-# are real zones with no shape, which is a different thing from the unknown
-# codes above, and the dimension says which is which.
+# So the polygons are still dissolved by zone id, and an id below that the file
+# has no polygon for is still emitted as a row carrying its name and borough
+# with has_geometry false. Against the current file neither branch has work to
+# do; against the older copy both do, and the tests run both. A zone with no
+# shape is a different thing from the unknown codes above, and the dimension
+# says which is which.
 GEOMETRYLESS_ZONE_IDS: dict[int, tuple[str, str]] = {
     57: ("Corona", "Queens"),
     104: ("Governor's Island/Ellis Island/Liberty Island", "Manhattan"),
@@ -251,11 +254,11 @@ def prepare_zones(
             }
         )
 
-    # Zone ids the trip records reference that the shapefile has no polygon
-    # for, because the mapping folded them into a neighbour. Real zones with no
-    # shape, which is a different thing from the unknown codes below.
+    # Zone ids the trip records reference that this copy of the shapefile has
+    # no polygon for. Real zones with no shape, which is a different thing from
+    # the unknown codes below. The current file has a polygon for each of them.
     for zone_id, (name, borough) in sorted(GEOMETRYLESS_ZONE_IDS.items()):
-        if zone_id in parts:  # pragma: no cover
+        if zone_id in parts:
             continue
         zones.append(
             Zone(
@@ -303,7 +306,11 @@ def prepare_zones(
         "polygon_records_read": float(raw_records),
         "zones_with_geometry": float(len(features)),
         "zones_dissolved_from_multiple_parts": float(dissolved_zones),
-        "zones_without_geometry": float(len(GEOMETRYLESS_ZONE_IDS)),
+        # Counted from what was emitted, not from the list above: against the
+        # current file the list names three ids that all have a polygon.
+        "zones_without_geometry": float(
+            sum(1 for zone in zones if not zone.has_geometry and not zone.is_unknown)
+        ),
         "unknown_zone_codes": float(len(UNKNOWN_ZONE_IDS)),
         "zones_total": float(len(zones)),
         "raw_vertices": float(raw_vertices),

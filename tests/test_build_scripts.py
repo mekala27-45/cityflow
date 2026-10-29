@@ -142,11 +142,12 @@ def test_an_empty_frame_directory_is_refused(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 REFERENCE = PATHS.root / "data" / "reference" / "dim_zone.csv"
+OLDER_REFERENCE = PATHS.root / "tests" / "fixtures" / "zone_reference_older_copy.csv"
 
 
-def _reference_shape() -> tuple[int, int, int]:
+def _reference_shape(reference: Path) -> tuple[int, int, int]:
     """Polygon records, zone ids with geometry, and zones in several pieces."""
-    with REFERENCE.open(encoding="utf-8", newline="") as handle:
+    with reference.open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     mappable = [row for row in rows if row["has_geometry"] == "1"]
     return (
@@ -157,25 +158,30 @@ def _reference_shape() -> tuple[int, int, int]:
 
 
 def test_the_fixture_reproduces_the_shape_of_the_real_shapefile(tmp_path: Path) -> None:
-    """The fixture is worth having only if it carries the same defect.
+    """The fixture is worth having only if it carries the shape of the file it
+    stands in for, so its counts come out of the reference it is built from
+    rather than being written down here, and the two cannot drift apart.
 
-    A stand in with one record per zone would let every geometry test pass
-    while the dissolve did nothing, which is the failure the dissolve exists
-    to prevent. The counts come out of the committed reference rather than
-    being written down here, so the two cannot drift apart.
+    Two references are committed. `data/reference/dim_zone.csv` is the one the
+    last build wrote from the shapefile it read. The older copy's reference
+    carries the defect the dissolve exists for, more polygon records than zone
+    ids, and the dissolve tests are built on it: a stand in with one record per
+    zone would let them pass while the dissolve did nothing.
     """
-    records, zone_ids, multi_part = _reference_shape()
-    stats = build_zone_fixture.build(REFERENCE, tmp_path / "taxi_zones")
+    for name, reference in (("committed", REFERENCE), ("older", OLDER_REFERENCE)):
+        records, zone_ids, multi_part = _reference_shape(reference)
+        stats = build_zone_fixture.build(reference, tmp_path / name / "taxi_zones")
+        assert stats["polygon_records"] == records, name
+        assert stats["zone_ids"] == zone_ids, name
+        assert stats["multi_part_zones"] == multi_part, name
+        for suffix in (".shp", ".shx", ".dbf", ".prj"):
+            assert (tmp_path / name / "taxi_zones").with_suffix(suffix).is_file(), suffix
 
-    assert stats["polygon_records"] == records
-    assert stats["zone_ids"] == zone_ids
-    assert stats["multi_part_zones"] == multi_part
-    assert stats["polygon_records"] > stats["zone_ids"], (
-        "The fixture holds one record per zone, so nothing in it fans out and "
-        "every dissolve test built on it is vacuous."
+    older = build_zone_fixture.build(OLDER_REFERENCE, tmp_path / "again" / "taxi_zones")
+    assert older["polygon_records"] > older["zone_ids"], (
+        "The older copy's fixture holds one record per zone, so nothing in it "
+        "fans out and every dissolve test built on it is vacuous."
     )
-    for suffix in (".shp", ".shx", ".dbf", ".prj"):
-        assert (tmp_path / "taxi_zones").with_suffix(suffix).is_file(), suffix
 
 
 def test_the_fixture_is_byte_identical_across_runs(tmp_path: Path) -> None:

@@ -317,4 +317,10 @@ def test_zones_writes_the_reference_and_the_geojson(scratch_root: Path) -> None:
     geojson = json.loads(
         (scratch_root / "web" / "public" / "data" / "zones.geojson").read_text(encoding="utf-8")
     )
-    assert len(geojson["features"]) == len(rows) - 5
+    unmappable = [row for row in rows if row["has_geometry"] == "0"]
+    assert len(geojson["features"]) == len(rows) - len(unmappable)
+
+    # The dbt seed is the same file, so the warehouse's dim_zone describes the
+    # shapefile this command just drew rather than whichever one was committed.
+    seed = scratch_root / "transform" / "seeds" / "zone_lookup.csv"
+    assert seed.read_bytes() == reference.read_bytes()
