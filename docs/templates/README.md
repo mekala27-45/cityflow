@@ -68,8 +68,7 @@ each figure that moved. Reading those footers first is how the build learned two
 things no fixture could have told it, both in
 [docs/data.md](docs/data.md#provenance): the yellow files spell one column
 differently from February 2023, and the airport fee was charged from April 2021,
-nine months before the data dictionary this pipeline was first written from
-says.
+nine months before the date this pipeline's vintage table first gave it.
 
 The pipeline has two ingest backends behind one interface, and they take the
 same path through the vintage mapping, the normalizer, the quarantine rules and
@@ -182,8 +181,8 @@ charged. The republished parquet carries an `airport_fee` column back to 2019,
 empty for two years; `mart_null_rates` shows {{ n:airport_fee_null_months }}
 service months where the modelled column is entirely null, then
 {{ month:airport_fee_first_populated }}, where it carries the fee. That month
-came from a census of the column in every published file, after the data
-dictionary had put it nine months later. A column a vintage does not collect is
+came from a census of the column in every published file, after the vintage
+table had first put it nine months later. A column a vintage does not collect is
 modelled as NULL and never as zero, so the series shows a gap rather than a
 step up from nothing.
 
