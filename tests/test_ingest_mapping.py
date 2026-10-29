@@ -616,6 +616,41 @@ def test_a_column_named_in_another_case_is_read_and_not_called_missing(
     assert row["vintage"] == "yellow_v4_airport_fee"
 
 
+def test_the_generator_spells_a_column_the_way_that_month_is_published(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """The yellow files spell the airport fee Airport_fee from February 2023 and
+    airport_fee before it. The generator writes what the published files write,
+    so the synthetic path meets the same comparison the real one does."""
+    reference = tmp_path / "data" / "reference"
+    reference.mkdir(parents=True)
+    shutil.copy(REPO / "data" / "reference" / "dim_zone.csv", reference / "dim_zone.csv")
+    registry = SourceRegistry(
+        _config(backend="synthetic"), connection, paths=Paths(root=tmp_path), scale=0.0002
+    )
+
+    spelled = {}
+    for spec in (
+        SourceSpec(service="yellow", year=2023, month=1),
+        SourceSpec(service="yellow", year=2023, month=2),
+        SourceSpec(service="fhvhv", year=2023, month=2),
+    ):
+        resolved = registry.resolve(spec)
+        described = connection.execute(
+            f"describe select * from read_parquet('{resolved.path}')"
+        ).fetchall()
+        spelled[str(spec)] = {
+            str(row[0]) for row in described if str(row[0]).lower() == "airport_fee"
+        }
+        assert registry.check_schema(resolved) == (set(), set()), spec
+
+    assert spelled == {
+        "yellow:2023-01": {"airport_fee"},
+        "yellow:2023-02": {"Airport_fee"},
+        "fhvhv:2023-02": {"airport_fee"},
+    }
+
+
 # ---------------------------------------------------------------------------
 # The generator's own arithmetic
 # ---------------------------------------------------------------------------

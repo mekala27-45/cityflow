@@ -371,6 +371,26 @@ VINTAGES: tuple[Vintage, ...] = (
 )
 
 
+# Where a published file spells a column differently from the vintage table,
+# by service and the first month it does. DuckDB binds names without regard to
+# case, so the normalizer reads either spelling; the table exists for the
+# generator, which writes what the published files write, so the synthetic path
+# meets the same spelling the real one does. Read off the published footers by
+# `cityflow probe`, July 2021 to August 2026.
+PUBLISHED_SPELLINGS: tuple[tuple[Service, dt.date, dict[str, str]], ...] = (
+    ("yellow", dt.date(2023, 2, 1), {"airport_fee": "Airport_fee"}),
+)
+
+
+def published_name(service: Service, period: dt.date, column: str) -> str:
+    """The spelling a published file of this service and month gives a column."""
+    name = column
+    for spelled, first, spellings in PUBLISHED_SPELLINGS:
+        if spelled == service and period >= first and column in spellings:
+            name = spellings[column]
+    return name
+
+
 class UnknownVintageError(LookupError):
     """No vintage covers this service and month."""
 

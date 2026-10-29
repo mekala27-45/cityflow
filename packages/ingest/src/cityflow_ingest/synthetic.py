@@ -40,7 +40,7 @@ import duckdb
 
 from cityflow_core.config import CityflowConfig, Service, SourceSpec
 from cityflow_core.paths import repo_root
-from cityflow_ingest.vintage import Vintage
+from cityflow_ingest.vintage import Vintage, published_name
 
 # Hour of day weights. Weekday and weekend are genuinely different shapes and
 # a generator that uses one profile for both produces a hour of week heatmap
@@ -540,6 +540,7 @@ def generate_month(
         local_share=local_share,
         bands=bands,
         duplicate_rate=duplicate_rate,
+        period=source.period,
     )
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -560,6 +561,7 @@ def _build_generation_sql(
     local_share: float,
     bands: dict[str, tuple[float, float]],
     duplicate_rate: float,
+    period: dt.date,
 ) -> str:
     """Assemble the generation query for one service and vintage."""
     speed = _speed_case()
@@ -766,7 +768,7 @@ def _build_generation_sql(
     from priced
     """
 
-    projected = _project_to_vintage(service, vintage)
+    projected = _project_to_vintage(service, vintage, period)
 
     # r_dup_keep rides along only so the duplicate arm can select against it,
     # and is excluded from the written file: a column that exists purely to
@@ -789,8 +791,10 @@ def _build_generation_sql(
     """
 
 
-def _project_to_vintage(service: Service, vintage: Vintage) -> str:
-    """Emit the exact column names and order the vintage's files carry."""
+def _project_to_vintage(service: Service, vintage: Vintage, period: dt.date) -> str:
+    """Emit the exact column names and order the vintage's files carry, spelled
+    the way the published files of that month spell them."""
+    airport_fee = published_name(service, period, "airport_fee")
     if service == "fhvhv":
         licence = (
             "case when r_extra < 0.66 then 'HV0003' "
@@ -816,7 +820,7 @@ def _project_to_vintage(service: Service, vintage: Vintage) -> str:
         if vintage.has_congestion_surcharge:
             columns.append("congestion_clean as congestion_surcharge")
         if vintage.has_airport_fee:
-            columns.append("airport_fee_clean as airport_fee")
+            columns.append(f"airport_fee_clean as {airport_fee}")
         if vintage.has_cbd_congestion_fee:
             columns.append("0.0 as cbd_congestion_fee")
         columns += [
@@ -858,7 +862,7 @@ def _project_to_vintage(service: Service, vintage: Vintage) -> str:
     if vintage.has_congestion_surcharge:
         columns.append("congestion_clean as congestion_surcharge")
     if vintage.has_airport_fee:
-        columns.append("airport_fee_clean as airport_fee")
+        columns.append(f"airport_fee_clean as {airport_fee}")
     if vintage.has_cbd_congestion_fee:
         columns.append("0.0 as cbd_congestion_fee")
     columns.append(
