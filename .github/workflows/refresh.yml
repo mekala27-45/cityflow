@@ -35,12 +35,44 @@ jobs:
       - name: keep the current figures for the diff
         run: cp web/public/data/manifest.json /tmp/manifest.before.json
 
+      # The shapefile is not committed (docs/runbook.md says why), so a runner
+      # has to fetch it, and until this step existed 'cityflow zones' exited 2
+      # on every scheduled run, one second in. The runbook prefers the link on
+      # the TLC page because the direct path has moved before; if it moves
+      # again this step fails here, by name, instead of somewhere downstream.
+      - name: fetch the zone shapefile
+        if: ${{ (inputs.backend || 'tlc') == 'tlc' }}
+        run: |
+          set -euo pipefail
+          mkdir -p raw/zones
+          curl --fail --location --silent --show-error --retry 3 --retry-delay 5 \
+            --output raw/zones/taxi_zones.zip \
+            https://d37ci6vzurychx.cloudfront.net/misc/taxi_zones.zip
+          unzip -o -j raw/zones/taxi_zones.zip -d raw/zones
+          test -f raw/zones/taxi_zones.shp
+
+      # Every file's footer, before any file is downloaded: a month the vintage
+      # table is wrong about stops the run here, in a minute, rather than after
+      # an hour of downloads.
+      - name: probe the window
+        if: ${{ (inputs.backend || 'tlc') == 'tlc' }}
+        run: |
+          set -uo pipefail
+          uv run cityflow probe --json probe.json
+          status=$?
+          if [ -f probe.json ]; then uv run python scripts/annotate_probe.py probe.json; fi
+          exit "$status"
+
       - name: rebuild the warehouse
         env:
           CITYFLOW_BACKEND: ${{ inputs.backend || 'tlc' }}
         run: |
           set -euo pipefail
-          uv run cityflow zones
+          # A synthetic refresh has no shapefile, and needs none: the zone
+          # reference and the map geometry it would regenerate are committed,
+          # and the stand in CI uses is circles, which must never reach the
+          # shipped map.
+          if [ -f raw/zones/taxi_zones.shp ]; then uv run cityflow zones; fi
           uv run cityflow ingest
           uv run dbt seed --project-dir transform --profiles-dir transform
           uv run dbt build --project-dir transform --profiles-dir transform
