@@ -1,5 +1,5 @@
 -- Five columns are watched because all five arrive part way through the history:
--- congestion_surcharge in 2019-02, airport_fee in 2022-01, cbd_congestion_fee in
+-- congestion_surcharge in 2019-02, airport_fee in 2021-04, cbd_congestion_fee in
 -- 2025-01, and passenger_count and ratecode_id are simply absent from the high
 -- volume for hire vehicle schema. Each one is counted per service and per source
 -- period so the month a column appears is visible as a step, not averaged away.

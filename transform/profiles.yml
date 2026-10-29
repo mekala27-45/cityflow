@@ -16,7 +16,14 @@ cityflow:
       path: warehouse/cityflow.duckdb
       schema: main
       threads: 2
+      # Set once, when the database opens, not with the settings below:
+      # dbt-duckdb runs every setting again on each new cursor, and DuckDB
+      # refuses to set the temporary directory once something has spilled to
+      # it, even to the same path. A build small enough never to spill never
+      # sees that, which is how it passed every run until the first full one
+      # against the published files.
+      config_options:
+        temp_directory: warehouse/tmp
       settings:
         memory_limit: 3GB
-        temp_directory: warehouse/tmp
         preserve_insertion_order: false

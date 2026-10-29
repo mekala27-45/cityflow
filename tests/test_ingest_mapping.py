@@ -11,6 +11,7 @@ and a column a vintage does not have becomes a typed NULL rather than a zero.
 from __future__ import annotations
 
 import datetime as dt
+import re
 import shutil
 import subprocess
 from collections.abc import Iterator
@@ -165,6 +166,29 @@ def test_the_surcharge_history_is_the_published_one() -> None:
     assert resolve_vintage("fhvhv", dt.date(2021, 4, 1)).has_airport_fee
     assert not resolve_vintage("green", dt.date(2024, 12, 1)).has_cbd_congestion_fee
     assert resolve_vintage("green", dt.date(2025, 1, 1)).has_cbd_congestion_fee
+
+
+def test_the_dbt_surcharge_test_dates_the_charges_as_the_vintage_table_does() -> None:
+    """assert_surcharge_null_before_introduction is SQL and cannot import the
+    vintage table, so it carries the two dates as literals. When the census
+    moved the airport fee from January 2022 to April 2021, the table changed
+    and the SQL did not, and CI's end to end build failed on the first real
+    fee. This keeps the two in step."""
+    sql = (
+        REPO / "transform" / "tests" / "assert_surcharge_null_before_introduction.sql"
+    ).read_text(encoding="utf-8")
+    congestion = re.search(r"source_period < date '([0-9-]+)'\s+and congestion_surcharge", sql)
+    airport = re.search(r"source_period < date '([0-9-]+)' and airport_fee", sql)
+    assert congestion is not None and airport is not None
+
+    def first_with(service: str, flag: str) -> dt.date:
+        return min(v.first for v in VINTAGES if v.service == service and getattr(v, flag))
+
+    assert dt.date.fromisoformat(congestion.group(1)) == first_with(
+        "yellow", "has_congestion_surcharge"
+    )
+    assert dt.date.fromisoformat(airport.group(1)) == first_with("yellow", "has_airport_fee")
+    assert first_with("fhvhv", "has_airport_fee") == first_with("yellow", "has_airport_fee")
 
 
 def test_no_for_hire_vintage_claims_a_total_the_files_do_not_publish() -> None:

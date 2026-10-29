@@ -345,7 +345,7 @@ models:
     description: >
       Null share per watched column, service and month. A null share of exactly
       1.0 followed by a drop is a column being introduced, not a data quality
-      problem: congestion_surcharge appears in 2019-02, airport_fee in 2022-01,
+      problem: congestion_surcharge appears in 2019-02, airport_fee in 2021-04,
       cbd_congestion_fee in 2025-01, and passenger_count and ratecode_id are
       absent from the high volume for hire vehicle schema entirely. What should
       raise an alarm is a share that moves in the middle of a service's history,
