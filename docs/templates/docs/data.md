@@ -411,10 +411,11 @@ in a slide. NULL says "not collected", which is what happened.
 window starts where it does. `mart_null_rates` watches it per service and per
 source period, and reports {{ n:airport_fee_null_months }} service months in
 which the column is entirely null. The first period in which it carries a value
-is {{ month:airport_fee_first_populated }}, which is the month the column appears
-in the published files. That step is visible on the null rate panel as a step,
-not averaged away, because the mart counts per period rather than over the
-window.
+is {{ month:airport_fee_first_populated }}, the month the fee was first charged;
+the column itself is in the published files from 2019, all but empty for two
+years, and in the month before the fee it carries nothing but zeros. That step
+is visible on the null rate panel as a step, not averaged away, because the mart
+counts per period rather than over the window.
 
 The last service month in which `airport_fee` is entirely null is
 {{ month:airport_fee_last_all_null }}, which is the last month of the window,
