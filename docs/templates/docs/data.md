@@ -153,9 +153,10 @@ about needing a spatial join rather than half supported.
 | `fhvhv_v2_airport_fee` | fhvhv | `airport_fee` is charged, from April 2021, the same month as yellow. |
 | `fhvhv_v3_cbd` | fhvhv | `cbd_congestion_fee` appears. |
 
-The date boundaries are in the code, one per vintage, and they are the month a
-column first appears **in a published file**, not the month the rule took
-effect. Those two differ, and the file is what we read.
+The date boundaries are in the code, one per vintage, and each is the first
+month a column carries values **in a published file**: not the month the rule
+took effect, and not the month an empty column was added to the schema. All
+three can differ, as the airport fee shows, and the values are what we read.
 
 Every vintage maps onto one canonical row, `CANONICAL_COLUMNS` in
 `normalize.py`, and nothing downstream reads a vintage column name. The staging

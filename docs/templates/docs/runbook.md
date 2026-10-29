@@ -124,9 +124,10 @@ version control where a reviewer can see it. To change it permanently, edit
 `backend:` in the config.
 
 The window comes from `config/cityflow.yml`. The committed window starts before
-the airport fee appears on purpose, so that a real schema change sits inside the
-build and `assert_surcharge_null_before_introduction` is not passing vacuously.
-A window entirely inside one vintage proves nothing about the vintage mapping.
+the airport fee is first charged on purpose, so that a real schema change sits
+inside the build and `assert_surcharge_null_before_introduction` is not passing
+vacuously. A window entirely inside one vintage proves nothing about the vintage
+mapping.
 
 `cityflow ingest` fetches each month with `curl`, lands it, and deletes the
 source file. Pass `--keep-source` when you are iterating on the normalizer and

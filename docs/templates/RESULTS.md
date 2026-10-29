@@ -32,8 +32,8 @@ any of them, for what the build found in the files before it read a row.
 The window spans {{ n:vintages }} schema vintages rather than one, on purpose.
 A build window inside a single vintage exercises the per vintage mapping in
 exactly one way and proves nothing about it. This one crosses the month the
-airport fee column appears in the published files, which is what makes the null
-rate panel show a real schema change and what stops
+airport fee was first charged, which is what makes the null rate panel show a
+real schema change and what stops
 `assert_surcharge_null_before_introduction` passing vacuously.
 
 ## 2. Quarantine
@@ -46,8 +46,8 @@ label and these counts sum to the total without double counting.
 
 {{ table:quarantine_by_rule }}
 
-{{ n:quarantine_rules_fired }} of the twelve defined rules fired over this
-window. The thresholds are in `config/cityflow.yml` and every one of them is
+{{ n:quarantine_rules_fired }} of the {{ n:quarantine_rules_defined }} defined rules fired over
+this window. The thresholds are in `config/cityflow.yml` and every one of them is
 explained in [docs/data.md](docs/data.md); the pipeline and the document read
 the same object, so they cannot drift.
 
@@ -64,7 +64,7 @@ would be the easy version and it would bias every citywide total downwards.
 | --- | --- |
 | Averaged over every payment type, yellow and green | {{ f4:tip_rate_naive_pct }} percent |
 | Card payments only, where a tip is observable | {{ f4:tip_rate_correct_pct }} percent |
-| Understatement | {{ f2:tip_rate_understatement_pct }} percent of the correct figure |
+| Understatement, as a share of the naive figure | {{ f2:tip_rate_understatement_pct }} percent |
 
 {{ n:cash_trips }} trips were settled in cash, which is
 {{ f2:cash_share_of_metered_pct }} percent of metered trips. Each records a tip
