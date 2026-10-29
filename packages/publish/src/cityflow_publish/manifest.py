@@ -28,6 +28,7 @@ import duckdb
 
 from cityflow_core.config import CityflowConfig
 from cityflow_core.paths import Paths
+from cityflow_ingest.quarantine import all_rule_names
 from cityflow_ingest.synthetic import PLANTED_CHANGEPOINT, PLANTED_SHIFT
 
 # Claims are grouped only for readability in the JSON. The gate reads the flat
@@ -45,6 +46,7 @@ CLAIM_QUERIES: dict[str, str] = {
     "source_files": "select count(*) from source_audit",
     "vintages": "select count(distinct vintage) from source_audit",
     "ingest_seconds": "select sum(seconds) from source_audit",
+    "source_gb": "select round(sum(source_bytes) / 1e9, 2) from source_audit",
     "first_period": "select min(source_period) from source_audit",
     "last_period": "select max(source_period) from source_audit",
     # The fact table ----------------------------------------------------------
@@ -258,6 +260,20 @@ def build_manifest(
         claims[f"quarantine_share_pct.{rule}"] = round(float(row[2]), 6)
     claims["quarantine_rules_fired"] = len(quarantine)
 
+    # Which defined rules caught nothing, named rather than counted. A rule
+    # with a zero count says something about the data it was pointed at, and
+    # which rules those are differs between the fixture and the published files.
+    defined: list[str] = []
+    for source in config.sources():
+        for name in all_rule_names(config, source):
+            if name not in defined:
+                defined.append(name)
+    fired = {str(row[0]) for row in quarantine}
+    unfired = [name for name in defined if name not in fired]
+    claims["quarantine_rules_defined"] = len(defined)
+    claims["quarantine_rules_unfired_count"] = len(unfired)
+    claims["quarantine_rules_unfired"] = ", ".join(f"`{name}`" for name in unfired) or "none"
+
     # Counted rather than asserted: a document that says "150 tests" while the
     # project has 141 is exactly the kind of figure this gate exists to catch.
     manifest_path = paths.transform / "target" / "manifest.json"
@@ -296,6 +312,22 @@ def build_manifest(
                     float(entry["relative_change"]) * 100, 2
                 )
         claims["planted_changepoint_miss_days"] = nearest
+
+        # The largest annotated shift in any service, which on the published
+        # files is the one a reader should check against what happened in the
+        # city on that date.
+        annotated = [
+            (service, entry)
+            for service, entries in sorted(detected.get("detected", {}).items())
+            for entry in entries
+        ]
+        if annotated:
+            service, entry = max(annotated, key=lambda item: abs(float(item[1]["relative_change"])))
+            claims["changepoint_largest_service"] = service
+            claims["changepoint_largest_date"] = entry["date"]
+            claims["changepoint_largest_change_pct"] = round(
+                float(entry["relative_change"]) * 100, 2
+            )
 
     geojson_path = paths.shipped / "zones.geojson"
     if geojson_path.is_file():

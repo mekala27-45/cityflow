@@ -800,6 +800,9 @@ REQUIRED_CLAIMS = (
     "threshold.max_implied_speed_mph",
     "defect_rate.unknown_zone",
     "planted_changepoint",
+    "source_gb",
+    "quarantine_rules_defined",
+    "quarantine_rules_unfired",
 )
 
 
