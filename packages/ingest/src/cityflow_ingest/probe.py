@@ -9,11 +9,11 @@ this module does, so a real build meets an unexpected schema in a minute rather
 than an hour in, and so the size of a window is known before a runner is
 committed to it.
 
-The comparison is the ingest's own, expected_columns against the file, with one
-distinction kept apart: a column whose name differs from the vintage table only
-in case. DuckDB binds column names without regard to case, so the normalizer
-reads such a column, while an exact comparison calls it missing. The two need
-different fixes, so they are reported separately.
+The comparison is the ingest's own, vintage.compare_columns, so the probe and the
+build cannot disagree about a file. It keeps a column whose name differs from
+the vintage table only in case apart from a missing one: DuckDB binds names
+without regard to case, so the normalizer reads such a column, and the two need
+different fixes.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -29,7 +29,7 @@ from typing import Any
 import duckdb
 
 from cityflow_core.config import SourceSpec
-from cityflow_ingest.vintage import UnknownVintageError, Vintage, expected_columns, resolve_vintage
+from cityflow_ingest.vintage import UnknownVintageError, compare_columns, resolve_vintage
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,16 +39,6 @@ class Head:
     published: bool
     bytes: int | None = None
     detail: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class ColumnCheck:
-    """One file's columns against its vintage's expected set."""
-
-    missing: tuple[str, ...]
-    unexpected: tuple[str, ...]
-    # (the name the vintage table uses, the name the file uses)
-    case_only: tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,38 +58,16 @@ class FileProbe:
     missing: tuple[str, ...] = ()
     unexpected: tuple[str, ...] = ()
     case_only: tuple[tuple[str, str], ...] = ()
+    # Columns the footer statistics say hold nothing but nulls. A column can be
+    # present in a file long before it carries a value, and the vintage table
+    # dates a column by the month it carries one.
+    empty: tuple[str, ...] = ()
     error: str | None = None
 
     @property
     def readable(self) -> bool:
         """Published, read, and carrying every column its vintage expects."""
         return self.published and self.error is None and not self.missing
-
-
-def compare_columns(actual: Iterable[str], vintage: Vintage) -> ColumnCheck:
-    """Missing, unexpected, and different only in case, as three separate sets."""
-    actual_set = set(actual)
-    expected = expected_columns(vintage)
-    ignored = {name.lower() for name in vintage.ignored}
-    by_lower = {name.lower(): name for name in actual_set}
-
-    missing: list[str] = []
-    case_only: list[tuple[str, str]] = []
-    for name in sorted(expected - actual_set):
-        found = by_lower.get(name.lower())
-        if found is None:
-            missing.append(name)
-        else:
-            case_only.append((name, found))
-
-    claimed = {found for _, found in case_only}
-    expected_lower = {name.lower() for name in expected}
-    unexpected = sorted(
-        name
-        for name in actual_set - expected - claimed
-        if name.lower() not in ignored and name.lower() not in expected_lower
-    )
-    return ColumnCheck(tuple(missing), tuple(unexpected), tuple(case_only))
 
 
 def head_url(url: str) -> Head:
@@ -172,6 +140,11 @@ def probe_source(
         meta = connection.execute(
             f"select num_rows, num_row_groups from parquet_file_metadata({quoted})"
         ).fetchone()
+        nulls = connection.execute(
+            "select path_in_schema, sum(stats_null_count), "
+            "count(*) filter (where stats_null_count is null) "
+            f"from parquet_metadata({quoted}) group by 1"
+        ).fetchall()
     except duckdb.Error as error:
         return FileProbe(
             **base, vintage=vintage.name, published=True, bytes=answer.bytes, error=str(error)
@@ -179,17 +152,26 @@ def probe_source(
 
     columns = tuple((str(row[0]), str(row[1])) for row in described)
     check = compare_columns((name for name, _ in columns), vintage)
+    rows = int(meta[0]) if meta else 0
+    empty = tuple(
+        sorted(
+            str(name)
+            for name, null_count, unknown in nulls
+            if rows > 0 and unknown == 0 and int(null_count) == rows
+        )
+    )
     return FileProbe(
         **base,
         vintage=vintage.name,
         published=True,
         bytes=answer.bytes,
-        rows=int(meta[0]) if meta else None,
+        rows=rows if meta else None,
         row_groups=int(meta[1]) if meta else None,
         columns=columns,
         missing=check.missing,
         unexpected=check.unexpected,
         case_only=check.case_only,
+        empty=empty,
     )
 
 
@@ -213,7 +195,8 @@ def probe_window(
 def schema_groups(probes: Sequence[FileProbe]) -> list[dict[str, Any]]:
     """Consecutive published months of one service that share a vintage and an
     identical schema, with their rows and bytes. A change of column name, type or
-    order starts a new group, which is how a drift inside a vintage shows up."""
+    order starts a new group, which is how a drift inside a vintage shows up.
+    A group's empty columns are the ones empty in every one of its months."""
     groups: list[dict[str, Any]] = []
     for probe in sorted(probes, key=lambda p: (p.service, p.period)):
         if not probe.published or probe.error:
@@ -230,6 +213,7 @@ def schema_groups(probes: Sequence[FileProbe]) -> list[dict[str, Any]]:
             last["months"] += 1
             last["rows"] += probe.rows or 0
             last["bytes"] += probe.bytes or 0
+            last["empty"] = [name for name in last["empty"] if name in probe.empty]
             continue
         groups.append(
             {
@@ -244,6 +228,7 @@ def schema_groups(probes: Sequence[FileProbe]) -> list[dict[str, Any]]:
                 "missing": list(probe.missing),
                 "unexpected": list(probe.unexpected),
                 "case_only": [list(pair) for pair in probe.case_only],
+                "empty": list(probe.empty),
             }
         )
     return groups

@@ -26,7 +26,6 @@ from cityflow_core.config import SourceSpec
 from cityflow_core.paths import repo_root
 from cityflow_ingest import probe as probe_module
 from cityflow_ingest.probe import (
-    compare_columns,
     head_path,
     head_url,
     probe_source,
@@ -34,7 +33,7 @@ from cityflow_ingest.probe import (
     schema_groups,
     write_report,
 )
-from cityflow_ingest.vintage import expected_columns, resolve_vintage
+from cityflow_ingest.vintage import compare_columns, expected_columns, resolve_vintage
 
 runner = CliRunner()
 TEXT_COLUMNS = {
@@ -53,13 +52,21 @@ def connection() -> Iterator[duckdb.DuckDBPyConnection]:
 
 
 def write_file(
-    connection: duckdb.DuckDBPyConnection, path: Path, columns: Iterable[str], rows: int = 3
+    connection: duckdb.DuckDBPyConnection,
+    path: Path,
+    columns: Iterable[str],
+    rows: int = 3,
+    *,
+    empty: Iterable[str] = (),
 ) -> None:
-    """A tiny parquet file carrying exactly these column names."""
+    """A tiny parquet file carrying exactly these column names, some all null."""
+    nulls = set(empty)
     expressions = []
     for name in sorted(columns):
         lowered = name.lower()
-        if lowered.endswith("datetime"):
+        if name in nulls:
+            expressions.append(f'cast(null as double) as "{name}"')
+        elif lowered.endswith("datetime"):
             expressions.append(f"timestamp '2024-01-01 08:00:00' + to_minutes(i) as \"{name}\"")
         elif lowered in TEXT_COLUMNS or lowered.endswith("_flag"):
             expressions.append(f"'HV0003' as \"{name}\"")
@@ -316,3 +323,23 @@ def test_the_annotation_script_runs_as_a_script(
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("::notice title=probe summary::1 of 1 files published")
+
+
+def test_a_column_present_but_never_filled_is_reported_as_all_null(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """The 2021 yellow files already carry an airport_fee column, a year before
+    the vintage table dates the fee. Whether that column holds anything decides
+    whether the dating is right, and the footer statistics answer it."""
+    months = [SourceSpec(service="yellow", year=2021, month=m) for m in (11, 12)]
+    for spec in months:
+        columns = vintage_columns(spec) | {"airport_fee"}
+        empty = {"airport_fee", "congestion_surcharge"} if spec.month == 11 else {"airport_fee"}
+        write_file(connection, tmp_path / spec.filename, columns, rows=4, empty=empty)
+
+    probes = probe_window(connection, months, local_dir=tmp_path)
+    groups = schema_groups(probes)
+
+    assert probes[0].empty == ("airport_fee", "congestion_surcharge")
+    assert probes[0].unexpected == ("airport_fee",)
+    assert len(groups) == 1 and groups[0]["empty"] == ["airport_fee"]

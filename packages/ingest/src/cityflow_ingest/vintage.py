@@ -19,6 +19,7 @@ the month the rule took effect. Those differ, and the file is what we read.
 from __future__ import annotations
 
 import datetime as dt
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from cityflow_core.config import Service
@@ -428,3 +429,50 @@ def expected_columns(vintage: Vintage) -> set[str]:
     if vintage.has_sales_tax:
         columns.add("sales_tax")
     return columns
+
+
+@dataclass(frozen=True, slots=True)
+class ColumnCheck:
+    """A file's column names against the names a vintage expects."""
+
+    missing: tuple[str, ...]
+    unexpected: tuple[str, ...]
+    # (the name the vintage table uses, the name the file uses)
+    case_only: tuple[tuple[str, str], ...]
+
+
+def compare_names(actual: Iterable[str], expected: set[str], ignored: set[str]) -> ColumnCheck:
+    """Missing, unexpected, and different only in case, kept apart.
+
+    Names are compared without regard to case because that is how DuckDB binds
+    them: the normalizer's airport_fee reads a file that calls it Airport_fee,
+    which the yellow files do from February 2023. Comparing exactly would call
+    that column missing and stop the build at a month the normalizer reads
+    correctly. The case difference is still reported, since it is a fact about
+    the source worth knowing.
+    """
+    actual_set = set(actual)
+    by_lower = {name.lower(): name for name in actual_set}
+    expected_lower = {name.lower() for name in expected}
+    ignored_lower = {name.lower() for name in ignored}
+
+    missing: list[str] = []
+    case_only: list[tuple[str, str]] = []
+    for name in sorted(expected - actual_set):
+        found = by_lower.get(name.lower())
+        if found is None:
+            missing.append(name)
+        else:
+            case_only.append((name, found))
+
+    unexpected = sorted(
+        name
+        for name in actual_set
+        if name.lower() not in expected_lower and name.lower() not in ignored_lower
+    )
+    return ColumnCheck(tuple(missing), tuple(unexpected), tuple(case_only))
+
+
+def compare_columns(actual: Iterable[str], vintage: Vintage) -> ColumnCheck:
+    """A file's columns against its vintage: what the ingest and the probe both check."""
+    return compare_names(actual, expected_columns(vintage), set(vintage.ignored))

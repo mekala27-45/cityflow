@@ -570,6 +570,52 @@ def test_the_schema_check_separates_a_missing_column_from_a_new_one(
     assert unexpected == {"some_new_tlc_column"}
 
 
+YELLOW_2023_ROW: dict[str, str] = {
+    "VendorID": "2",
+    "tpep_pickup_datetime": "timestamp '2023-03-07 18:00:00'",
+    "tpep_dropoff_datetime": "timestamp '2023-03-07 18:40:00'",
+    "passenger_count": "1",
+    "trip_distance": "17.2",
+    "RatecodeID": "2",
+    "store_and_fwd_flag": "'N'",
+    "PULocationID": "132",
+    "DOLocationID": "230",
+    "payment_type": "1",
+    "fare_amount": "70.0",
+    "extra": "0.0",
+    "mta_tax": "0.5",
+    "tip_amount": "15.0",
+    "tolls_amount": "6.55",
+    "improvement_surcharge": "1.0",
+    "total_amount": "96.8",
+    "congestion_surcharge": "2.5",
+    "Airport_fee": "1.25",
+}
+
+
+def test_a_column_named_in_another_case_is_read_and_not_called_missing(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The yellow files call the airport fee Airport_fee from February 2023, which
+    `cityflow probe` found in the published footers before any real ingest ran.
+    DuckDB binds names without regard to case, so the normalizer reads it, and
+    the schema check has to agree or a real build stops at a month it reads."""
+    spec = SourceSpec(service="yellow", year=2023, month=3)
+    target = tmp_path / "raw" / spec.filename
+    target.parent.mkdir(parents=True)
+    _write_row(connection, target, YELLOW_2023_ROW)
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/curl")
+
+    registry = _registry(connection, tmp_path, "tlc")
+    missing, unexpected = registry.check_schema(registry.resolve(spec))
+
+    assert missing == set()
+    assert unexpected == set()
+    row = _normalized(connection, spec, target)
+    assert row["airport_fee"] == pytest.approx(1.25)
+    assert row["vintage"] == "yellow_v4_airport_fee"
+
+
 # ---------------------------------------------------------------------------
 # The generator's own arithmetic
 # ---------------------------------------------------------------------------

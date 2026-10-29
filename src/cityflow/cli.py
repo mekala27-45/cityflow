@@ -233,6 +233,8 @@ def probe(
             )
         if group["unexpected"]:
             notes.append(f"unexpected {', '.join(group['unexpected'])}")
+        if group["empty"]:
+            notes.append(f"all null {', '.join(group['empty'])}")
         table.add_row(
             group["service"],
             str(group["vintage"]),

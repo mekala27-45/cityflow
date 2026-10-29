@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from cityflow_core.config import SourceSpec
-from cityflow_ingest.vintage import HVFHS_OPERATORS, PAYMENT_TYPES, Vintage
+from cityflow_ingest.vintage import HVFHS_OPERATORS, PAYMENT_TYPES, Vintage, compare_names
 
 # The canonical staging schema, in order. Everything downstream reads this and
 # nothing downstream reads a vintage column name.
@@ -218,8 +218,8 @@ def schema_difference(
 
     Returned separately because they are different failures. A missing column
     means the vintage table is wrong about this month. An unexpected column
-    means the TLC added something, which is information, not an error.
+    means the TLC added something, which is information, not an error. The
+    rule is vintage.compare_names, which ignores case the way DuckDB does.
     """
-    missing = expected - actual
-    unexpected = actual - expected - ignored
-    return missing, unexpected
+    check = compare_names(actual, expected, ignored)
+    return set(check.missing), set(check.unexpected)

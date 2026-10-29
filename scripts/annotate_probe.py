@@ -50,6 +50,8 @@ def render(document: dict[str, Any]) -> list[str]:
             notes.append("case only " + ", ".join(f"{a} is {b}" for a, b in g["case_only"]))
         if g["unexpected"]:
             notes.append("unexpected " + ", ".join(g["unexpected"]))
+        if g["empty"]:
+            notes.append("all null " + ", ".join(g["empty"]))
         summary.append(
             f"{g['service']} {g['vintage']} {g['first']} to {g['last']} ({g['months']}): "
             f"{g['rows']:,} rows, {g['bytes'] / 1e9:.2f} GB, " + ("; ".join(notes) or "as expected")

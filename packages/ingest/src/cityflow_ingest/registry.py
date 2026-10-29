@@ -35,7 +35,7 @@ from cityflow_ingest.synthetic import (
     install_zone_tables,
     load_zones,
 )
-from cityflow_ingest.vintage import Vintage, expected_columns, resolve_vintage
+from cityflow_ingest.vintage import Vintage, compare_columns, resolve_vintage
 
 
 class SourceUnavailableError(RuntimeError):
@@ -173,12 +173,11 @@ class SourceRegistry:
         Two different failures. Missing means the vintage table is wrong about
         this month and the build must stop. Unexpected means the TLC added a
         column, which is information worth printing and not a reason to fail.
+        Names compare without regard to case, as DuckDB binds them; see
+        vintage.compare_names for the month that made this matter.
         """
         described = self.connection.execute(
             f"describe select * from read_parquet('{resolved.path}')"
         ).fetchall()
-        actual = {row[0] for row in described}
-        expected = expected_columns(resolved.vintage)
-        missing = expected - actual
-        unexpected = actual - expected - set(resolved.vintage.ignored)
-        return missing, unexpected
+        check = compare_columns((str(row[0]) for row in described), resolved.vintage)
+        return set(check.missing), set(check.unexpected)
