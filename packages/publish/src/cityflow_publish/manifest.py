@@ -111,7 +111,12 @@ CLAIM_QUERIES: dict[str, str] = {
         "where column_name = 'cbd_congestion_fee' and null_share = 1.0"
     ),
     "shapefile_polygon_records": "select sum(part_count) from dim_zone",
-    "zones_multi_part_polygons": ("select sum(part_count) from dim_zone where part_count > 1"),
+    # coalesce, because a shapefile with no zone in several parts, which is
+    # what the TLC publishes today, leaves the sum over no rows null rather
+    # than zero, and a null claim stops every document that states it.
+    "zones_multi_part_polygons": (
+        "select coalesce(sum(part_count), 0) from dim_zone where part_count > 1"
+    ),
     # The two below describe the same file from the other direction: how many
     # distinct zone ids those records cover, and how many ids are spread over
     # more than one of them. The runbook quotes them when it explains what the

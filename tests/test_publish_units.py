@@ -239,6 +239,21 @@ def test_one_polygon_per_id_needs_no_dissolve_and_leaves_no_id_unshaped(
     assert set(GEOMETRYLESS_ZONE_IDS) <= shaped
 
 
+def test_the_multi_part_claim_is_zero_on_a_file_with_no_multi_part_zone() -> None:
+    """The current shapefile has no zone in several parts. A sum over no rows
+    is null, and a null claim stops every document that states it, which is how
+    the claim used to fail on the published layout."""
+    import duckdb
+
+    from cityflow_publish.manifest import CLAIM_QUERIES
+
+    connection = duckdb.connect()
+    connection.execute("create table dim_zone as select 1 as part_count from range(263)")
+    for claim in ("zones_multi_part_polygons", "zones_dissolved", "shapefile_multi_part_zones"):
+        row = connection.execute(CLAIM_QUERIES[claim]).fetchone()
+        assert row is not None and row[0] == 0, claim
+
+
 def test_the_airport_zones_are_flagged_from_the_id_list(
     prepared: tuple[list[Zone], dict[str, float]],
 ) -> None:
