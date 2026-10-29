@@ -453,10 +453,15 @@ whole path working on the published files before the first full build ran.
 **The host has a firewall.** The TLC distribution answers a client that makes a
 few thousand requests in a few minutes with 202 Accepted and a challenge page,
 then with 403 for files it served an hour before. The probe reads one footer per
-file, slowly, with the HTTP metadata cache on, and the download treats a 202, a
-429 or a 5xx as a reason to wait and retry rather than as a file: `curl --fail`
-counts a 202 as a success, so the registry also checks that what arrived starts
-and ends with the parquet magic number.
+file, slowly, with the HTTP metadata cache on, and a full build then waits five
+minutes before its first download. The download treats a 202, a 429 or a 5xx as
+a reason to wait and retry rather than as a file, and reads a 403 by its body:
+the storage service's `AccessDenied` means the file is not published, and the
+build stops on it at once; any other 403 is the firewall, retried like a 202.
+Waits start at a minute and double to a ceiling of five, six attempts in all.
+`curl --fail` would count a 202 as a success, so the registry reads the status
+itself and also checks that what arrived starts and ends with the parquet magic
+number.
 
 **What the pull request contains.** The changed files under
 `web/public/data/**`, the query log and the screenshots under `web/tests/`, the
