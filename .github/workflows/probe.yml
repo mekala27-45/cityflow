@@ -1,0 +1,67 @@
+name: probe
+
+# Reads the schema, row count and size of every published TLC file in a window
+# from each file's parquet footer, and downloads none of them. Run it before a
+# real build: it says in a minute what the build will meet and how big it will
+# be, where the build itself would find out an hour in. The findings are
+# annotations on the run page, so nobody needs to download an artifact to read
+# them, and the full report is attached as one. It writes nothing back to the
+# repository.
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "first month, YYYY-MM (empty for the build window)"
+        default: ""
+        type: string
+      end:
+        description: "last month, YYYY-MM (empty for the build window)"
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.7"
+          enable-cache: true
+      - run: uv sync
+
+      - name: the runner a real build would get
+        run: |
+          set -euo pipefail
+          cpus="$(nproc)"
+          memory="$(free -g | awk '/^Mem:/ {print $2}')"
+          disks="$(df -BG --output=target,size,avail / /mnt 2>/dev/null | tail -n +2 | awk '{printf "%s %s total %s free; ", $1, $2, $3}')"
+          echo "::notice title=runner::${cpus} cpus, ${memory} GB memory, ${disks}"
+
+      - name: probe every file in the window
+        env:
+          START: ${{ inputs.start }}
+          END: ${{ inputs.end }}
+        run: |
+          set -uo pipefail
+          args=()
+          if [ -n "$START" ]; then args+=(--start "$START"); fi
+          if [ -n "$END" ]; then args+=(--end "$END"); fi
+          uv run cityflow probe "${args[@]}" --json probe.json
+          status=$?
+          if [ -f probe.json ]; then
+            uv run python scripts/annotate_probe.py probe.json
+          fi
+          exit "$status"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe
+          path: probe.json
+          if-no-files-found: ignore

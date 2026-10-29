@@ -96,6 +96,7 @@ make install
 uv run cityflow doctor
 
 make zones
+uv run cityflow probe                            # or: make probe
 CITYFLOW_BACKEND=tlc uv run cityflow ingest      # or: make ingest-tlc
 make transform
 make publish
@@ -106,6 +107,15 @@ make web
 ```
 
 Notes on that sequence.
+
+`cityflow probe` reads the footer of every file in the window, which is a few
+range requests per file and no download, and compares each file's columns with
+its vintage the same way the ingest does. It exits 1 when a month inside the
+build window is unpublished, unreadable or missing a column, which is exactly
+when the ingest would stop partway, and it prints the rows and gigabytes the
+window holds. `--start` and `--end` widen it, since it changes nothing, and
+`--json` writes the full report. A column whose name differs from the vintage
+table only in case is reported as such rather than as missing.
 
 `CITYFLOW_BACKEND` is the only configuration value with an environment
 override, so the same committed `config/cityflow.yml` builds either warehouse
@@ -166,6 +176,7 @@ path produces.
 | `install` | `uv sync --all-extras` and `npm ci` | once per checkout, and after a dependency change |
 | `doctor` | reports what this machine can do | before a long build, and first when something fails oddly |
 | `zones` | shapefile to `dim_zone.csv` and `zones.geojson` | after unpacking the shapefile, or after changing the simplification tolerance |
+| `probe` | reads every real file's schema, row count and size from its parquet footer, downloads none | before a real build, to learn what it will meet and how big it is |
 | `ingest` | resolves, normalizes, quarantines and lands every month for the configured backend | the first stage of any build |
 | `ingest-tlc` | the same, forcing the real files | when the config default is `synthetic` and you want the real warehouse |
 | `ingest-synthetic` | the same, forcing the generator | on a machine with no egress, in CI, and for any test of the rules themselves |

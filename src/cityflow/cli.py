@@ -8,8 +8,10 @@ over these, not a second implementation of them.
 from __future__ import annotations
 
 import csv
+import datetime as dt
 import json
 import sys
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -167,6 +169,100 @@ def ingest(
         f"{report.source_rows:,} source rows, {report.clean_rows:,} landed in "
         f"the warehouse, backend {config.backend}."
     )
+
+
+def _month(value: str | None, fallback: dt.date) -> dt.date:
+    if value is None:
+        return fallback
+    try:
+        return dt.datetime.strptime(value, "%Y-%m").date()
+    except ValueError as error:
+        raise typer.BadParameter(f"{value!r} is not a month in the form YYYY-MM") from error
+
+
+@app.command()
+def probe(
+    start: Annotated[
+        str | None, typer.Option(help="First month, YYYY-MM. Defaults to the build window.")
+    ] = None,
+    end: Annotated[
+        str | None, typer.Option(help="Last month, YYYY-MM. Defaults to the build window.")
+    ] = None,
+    local_dir: Annotated[
+        Path | None,
+        typer.Option(help="Read the files from this directory instead of the TLC host."),
+    ] = None,
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Write every file's probe to this path.")
+    ] = None,
+) -> None:
+    """Read every published file's schema, rows and size, without downloading one.
+
+    The window defaults to the build's own and can be widened, since the probe
+    changes nothing. The exit code is 1 when a file inside the build window is
+    unpublished, unreadable or missing a column its vintage expects, which is
+    exactly when a real ingest of that window would stop partway.
+    """
+    import duckdb
+
+    from cityflow_ingest.probe import probe_window, schema_groups, write_report
+
+    config = load_config()
+    first = _month(start, config.start)
+    last = _month(end, config.end)
+    if last < first:
+        raise typer.BadParameter("end must not be before start")
+    window = config.model_copy(update={"start": first, "end": last, "detail_month": first})
+
+    connection = duckdb.connect()
+    try:
+        probes = probe_window(connection, window.sources(), local_dir=local_dir)
+    finally:
+        connection.close()
+
+    table = Table(title=f"{len(probes)} files, {first:%Y-%m} to {last:%Y-%m}")
+    for column in ("service", "vintage", "months", "rows", "GB", "schema"):
+        table.add_column(column, justify="right" if column in ("months", "rows", "GB") else "left")
+    for group in schema_groups(probes):
+        notes = []
+        if group["missing"]:
+            notes.append(f"missing {', '.join(group['missing'])}")
+        if group["case_only"]:
+            notes.append(
+                "case only " + ", ".join(f"{want} is {have}" for want, have in group["case_only"])
+            )
+        if group["unexpected"]:
+            notes.append(f"unexpected {', '.join(group['unexpected'])}")
+        table.add_row(
+            group["service"],
+            str(group["vintage"]),
+            f"{group['first']} to {group['last']} ({group['months']})",
+            f"{group['rows']:,}",
+            f"{group['bytes'] / 1e9:.2f}",
+            "; ".join(notes) or "as expected",
+        )
+    console.print(table)
+
+    unpublished = [p for p in probes if not p.published]
+    for item in unpublished:
+        console.print(f"  [yellow]not published[/yellow] {item.source}: {item.error}")
+    total_rows = sum(p.rows or 0 for p in probes)
+    total_bytes = sum(p.bytes or 0 for p in probes)
+    console.print(
+        f"{len(probes) - len(unpublished)} published files, {total_rows:,} rows, "
+        f"{total_bytes / 1e9:.2f} GB"
+    )
+    if json_out is not None:
+        write_report(probes, json_out)
+        console.print(f"Wrote {json_out}")
+
+    in_build = {str(spec) for spec in config.sources()}
+    blocking = [p for p in probes if p.source in in_build and not p.readable]
+    for item in blocking:
+        reason = item.error or f"missing {', '.join(item.missing)}"
+        console.print(f"  [red]would stop the build[/red] {item.source}: {reason}")
+    if blocking:
+        raise typer.Exit(code=1)
 
 
 @app.command(name="metrics")

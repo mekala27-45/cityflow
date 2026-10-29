@@ -33,6 +33,10 @@ doctor:  ## Report what this machine can and cannot do, before a build fails
 zones:  ## Build the zone geometry and dim_zone from the TLC shapefile
 	$(UV) run cityflow zones
 
+.PHONY: probe
+probe:  ## Read every real file's schema, rows and size from its footer, download none
+	$(UV) run cityflow probe
+
 .PHONY: ingest
 ingest:  ## Ingest the configured window (backend from config/cityflow.yml)
 	$(UV) run cityflow ingest --scale $(SCALE)
