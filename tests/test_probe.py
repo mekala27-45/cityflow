@@ -26,6 +26,8 @@ from cityflow_core.config import SourceSpec
 from cityflow_core.paths import repo_root
 from cityflow_ingest import probe as probe_module
 from cityflow_ingest.probe import (
+    FileProbe,
+    group_notes,
     head_path,
     head_url,
     probe_source,
@@ -343,3 +345,56 @@ def test_a_column_present_but_never_filled_is_reported_as_all_null(
     assert probes[0].empty == ("airport_fee", "congestion_surcharge")
     assert probes[0].unexpected == ("airport_fee",)
     assert len(groups) == 1 and groups[0]["empty"] == ["airport_fee"]
+    assert group_notes(groups[0]) == ["unexpected airport_fee (all null)"]
+
+
+def test_an_unexpected_column_that_carries_values_says_how_many_rows(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """Present and filled is a different finding from present and empty: it
+    means the vintage table dates the column later than the files do."""
+    months = [SourceSpec(service="fhvhv", year=2021, month=m) for m in (11, 12)]
+    for spec in months:
+        empty = {"airport_fee"} if spec.month == 11 else set()
+        write_file(
+            connection,
+            tmp_path / spec.filename,
+            vintage_columns(spec) | {"airport_fee"},
+            rows=5,
+            empty=empty,
+        )
+
+    groups = schema_groups(probe_window(connection, months, local_dir=tmp_path))
+
+    assert groups[0]["unexpected_values"] == {"airport_fee": 5}
+    assert group_notes(groups[0]) == ["unexpected airport_fee (values in 5 rows)"]
+
+
+def test_a_month_without_null_counts_makes_the_total_unknown() -> None:
+    probe = FileProbe(
+        source="yellow:2021-12",
+        service="yellow",
+        period="2021-12",
+        location="x",
+        vintage="yellow_v3_congestion",
+        published=True,
+        rows=10,
+        unexpected=("airport_fee",),
+        values=(("airport_fee", None),),
+    )
+    group = schema_groups([probe])[0]
+
+    assert group["unexpected_values"] == {"airport_fee": None}
+    assert group_notes(group) == ["unexpected airport_fee (no null count in the footer)"]
+
+
+def test_a_long_annotation_is_split_and_numbered_not_cut() -> None:
+    lines = [f"fhvhv:2023-{m:02d} {'x' * 300}" for m in range(1, 13)] * 3
+
+    commands = annotate_probe.annotations("notice", "sizes", lines)
+
+    assert len(commands) > 1
+    assert all(len(command) <= 4_096 + 40 for command in commands)
+    assert commands[0].startswith(f"::notice title=sizes (1 of {len(commands)})::")
+    carried = "%0A".join(command.split("::", 2)[2] for command in commands)
+    assert carried.count("fhvhv:2023-") == len(lines)

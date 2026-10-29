@@ -62,6 +62,9 @@ class FileProbe:
     # present in a file long before it carries a value, and the vintage table
     # dates a column by the month it carries one.
     empty: tuple[str, ...] = ()
+    # Rows carrying a value, per column, from the footer's null counts. None
+    # where a row group's statistics leave the null count out.
+    values: tuple[tuple[str, int | None], ...] = ()
     error: str | None = None
 
     @property
@@ -153,13 +156,11 @@ def probe_source(
     columns = tuple((str(row[0]), str(row[1])) for row in described)
     check = compare_columns((name for name, _ in columns), vintage)
     rows = int(meta[0]) if meta else 0
-    empty = tuple(
-        sorted(
-            str(name)
-            for name, null_count, unknown in nulls
-            if rows > 0 and unknown == 0 and int(null_count) == rows
-        )
+    values = tuple(
+        (str(name), rows - int(null_count) if unknown == 0 else None)
+        for name, null_count, unknown in sorted(nulls, key=lambda row: str(row[0]))
     )
+    empty = tuple(name for name, count in values if rows > 0 and count == 0)
     return FileProbe(
         **base,
         vintage=vintage.name,
@@ -172,6 +173,7 @@ def probe_source(
         unexpected=check.unexpected,
         case_only=check.case_only,
         empty=empty,
+        values=values,
     )
 
 
@@ -196,7 +198,10 @@ def schema_groups(probes: Sequence[FileProbe]) -> list[dict[str, Any]]:
     """Consecutive published months of one service that share a vintage and an
     identical schema, with their rows and bytes. A change of column name, type or
     order starts a new group, which is how a drift inside a vintage shows up.
-    A group's empty columns are the ones empty in every one of its months."""
+    A group's empty columns are the ones empty in every one of its months, and
+    for each unexpected column it counts the rows that carry a value, which is
+    what says whether a column the vintage table does not expect yet is a
+    placeholder or a fee already being collected."""
     groups: list[dict[str, Any]] = []
     for probe in sorted(probes, key=lambda p: (p.service, p.period)):
         if not probe.published or probe.error:
@@ -214,6 +219,7 @@ def schema_groups(probes: Sequence[FileProbe]) -> list[dict[str, Any]]:
             last["rows"] += probe.rows or 0
             last["bytes"] += probe.bytes or 0
             last["empty"] = [name for name in last["empty"] if name in probe.empty]
+            _add_values(last["unexpected_values"], probe)
             continue
         groups.append(
             {
@@ -229,9 +235,21 @@ def schema_groups(probes: Sequence[FileProbe]) -> list[dict[str, Any]]:
                 "unexpected": list(probe.unexpected),
                 "case_only": [list(pair) for pair in probe.case_only],
                 "empty": list(probe.empty),
+                "unexpected_values": _add_values(dict.fromkeys(probe.unexpected, 0), probe),
             }
         )
     return groups
+
+
+def _add_values(totals: dict[str, int | None], probe: FileProbe) -> dict[str, int | None]:
+    """Add one month's value counts for the unexpected columns into a group's
+    running totals. A month whose footer leaves a null count out makes the
+    total unknown rather than quietly smaller."""
+    counts = dict(probe.values)
+    for name, running in totals.items():
+        count = counts.get(name)
+        totals[name] = None if running is None or count is None else running + count
+    return totals
 
 
 def write_report(probes: Sequence[FileProbe], path: Path) -> None:
@@ -242,3 +260,27 @@ def write_report(probes: Sequence[FileProbe], path: Path) -> None:
         "groups": schema_groups(probes),
     }
     path.write_text(json.dumps(document, indent=1) + "\n", encoding="utf-8")
+
+
+def group_notes(group: dict[str, Any]) -> list[str]:
+    """What is worth saying about one schema group, in words."""
+    notes: list[str] = []
+    if group["missing"]:
+        notes.append("missing " + ", ".join(group["missing"]))
+    if group["case_only"]:
+        notes.append(
+            "case only " + ", ".join(f"{want} is {have}" for want, have in group["case_only"])
+        )
+    for name in group["unexpected"]:
+        count = group["unexpected_values"].get(name)
+        if count is None:
+            detail = "no null count in the footer"
+        elif count == 0:
+            detail = "all null"
+        else:
+            detail = f"values in {count:,} rows"
+        notes.append(f"unexpected {name} ({detail})")
+    expected_empty = [name for name in group["empty"] if name not in group["unexpected"]]
+    if expected_empty:
+        notes.append("all null " + ", ".join(expected_empty))
+    return notes

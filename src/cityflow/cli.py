@@ -205,7 +205,7 @@ def probe(
     """
     import duckdb
 
-    from cityflow_ingest.probe import probe_window, schema_groups, write_report
+    from cityflow_ingest.probe import group_notes, probe_window, schema_groups, write_report
 
     config = load_config()
     first = _month(start, config.start)
@@ -224,17 +224,7 @@ def probe(
     for column in ("service", "vintage", "months", "rows", "GB", "schema"):
         table.add_column(column, justify="right" if column in ("months", "rows", "GB") else "left")
     for group in schema_groups(probes):
-        notes = []
-        if group["missing"]:
-            notes.append(f"missing {', '.join(group['missing'])}")
-        if group["case_only"]:
-            notes.append(
-                "case only " + ", ".join(f"{want} is {have}" for want, have in group["case_only"])
-            )
-        if group["unexpected"]:
-            notes.append(f"unexpected {', '.join(group['unexpected'])}")
-        if group["empty"]:
-            notes.append(f"all null {', '.join(group['empty'])}")
+        notes = group_notes(group)
         table.add_row(
             group["service"],
             str(group["vintage"]),

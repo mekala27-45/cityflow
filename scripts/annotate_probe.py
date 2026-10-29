@@ -20,15 +20,42 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from cityflow_ingest.probe import group_notes
+
 
 def _escape(text: str) -> str:
     return text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+# GitHub cuts an annotation's message at 4,096 characters, so a longer one is
+# split at line boundaries and numbered rather than silently truncated, which is
+# what the first real probe run did to its list of file sizes.
+MESSAGE_LIMIT = 4_000
 
 
 def annotation(level: str, title: str, lines: list[str]) -> str:
     """One workflow command. Titles are properties, so commas and colons are escaped too."""
     safe_title = _escape(title).replace(":", "%3A").replace(",", "%2C")
     return f"::{level} title={safe_title}::{_escape(chr(10).join(lines))}"
+
+
+def annotations(level: str, title: str, lines: list[str]) -> list[str]:
+    """As many commands as the message needs, each under the limit once escaped."""
+    pieces: list[list[str]] = [[]]
+    size = 0
+    for line in lines:
+        cost = len(_escape(line)) + 3
+        if pieces[-1] and size + cost > MESSAGE_LIMIT:
+            pieces.append([])
+            size = 0
+        pieces[-1].append(line[: MESSAGE_LIMIT - 3])
+        size += cost
+    if len(pieces) == 1:
+        return [annotation(level, title, pieces[0])]
+    return [
+        annotation(level, f"{title} ({i} of {len(pieces)})", piece)
+        for i, piece in enumerate(pieces, start=1)
+    ]
 
 
 def render(document: dict[str, Any]) -> list[str]:
@@ -43,15 +70,7 @@ def render(document: dict[str, Any]) -> list[str]:
         f"{total_rows:,} rows, {total_bytes / 1e9:.2f} GB"
     ]
     for g in groups:
-        notes = []
-        if g["missing"]:
-            notes.append("missing " + ", ".join(g["missing"]))
-        if g["case_only"]:
-            notes.append("case only " + ", ".join(f"{a} is {b}" for a, b in g["case_only"]))
-        if g["unexpected"]:
-            notes.append("unexpected " + ", ".join(g["unexpected"]))
-        if g["empty"]:
-            notes.append("all null " + ", ".join(g["empty"]))
+        notes = group_notes(g)
         summary.append(
             f"{g['service']} {g['vintage']} {g['first']} to {g['last']} ({g['months']}): "
             f"{g['rows']:,} rows, {g['bytes'] / 1e9:.2f} GB, " + ("; ".join(notes) or "as expected")
@@ -72,19 +91,19 @@ def render(document: dict[str, Any]) -> list[str]:
     ]
 
     out = [
-        annotation("notice", "probe summary", summary),
-        annotation("notice", "schemas", schemas or ["no published file"]),
-        annotation("notice", "sizes", sizes or ["no published file"]),
+        *annotations("notice", "probe summary", summary),
+        *annotations("notice", "schemas", schemas or ["no published file"]),
+        *annotations("notice", "sizes", sizes or ["no published file"]),
     ]
     if absent:
-        out.append(annotation("warning", "not published", absent))
+        out.extend(annotations("warning", "not published", absent))
     broken = [
         f"{f['source']}: {f['error'] or 'missing ' + ', '.join(f['missing'])}"
         for f in published
         if f["error"] or f["missing"]
     ]
     if broken:
-        out.append(annotation("error", "unreadable or missing columns", broken))
+        out.extend(annotations("error", "unreadable or missing columns", broken))
     return out
 
 

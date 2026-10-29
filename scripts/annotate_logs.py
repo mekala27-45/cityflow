@@ -9,8 +9,9 @@ reconcile verdict), on failure with the last lines of every stage, so the stage
 that broke says why on the page and in the checks API without anyone
 downloading a log.
 
-Colour codes are stripped, and a tail longer than an annotation can carry keeps
-its last lines, since that is where a failure explains itself.
+Colour codes are stripped. A tail longer than one annotation is split across
+numbered ones, and a tail longer than a step can show keeps its last lines,
+since that is where a failure explains itself.
 
 Usage:
     python scripts/annotate_logs.py --level error --tail 80 logs/*.log
@@ -23,11 +24,12 @@ import re
 import sys
 from pathlib import Path
 
-from annotate_probe import annotation
+from annotate_probe import annotations
 
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
-# An annotation message carries up to 64 KB. Leave room for the escaping.
-MAX_CHARACTERS = 48_000
+# A run page shows ten annotations of each level per step, each cut at 4,096
+# characters, so a tail is kept to what ten of them can carry.
+MAX_CHARACTERS = 30_000
 
 
 def tail(path: Path, lines: int) -> list[str]:
@@ -53,7 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         if not path.is_file():
             continue
         lines = tail(path, args.tail)
-        print(annotation(args.level, path.stem, lines or ["(empty)"]))
+        for command in annotations(args.level, path.stem, lines or ["(empty)"]):
+            print(command)
     return 0
 
 
