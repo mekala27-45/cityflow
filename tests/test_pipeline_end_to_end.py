@@ -21,12 +21,12 @@ Four properties are asserted that nothing smaller can reach:
    it, "the shipped layer agrees with the warehouse" is a claim about a check
    that has never been observed to fail.
 
-The window spans December 2021 and January 2022 deliberately, for the same
-reason the committed config does: the airport fee column appears in the yellow
-and for hire files that month and not before, so two of the three services
-cross a vintage boundary inside a two month window and the per vintage mapping
-is exercised rather than assumed. A window sitting inside one vintage proves
-nothing about the vintage table.
+The window spans March and April 2021 deliberately, for the same reason the
+committed config starts before April 2021: the airport fee is first charged in
+the yellow and for hire files that month and not before, so two of the three
+services cross a vintage boundary inside a two month window and the per vintage
+mapping is exercised rather than assumed. A window sitting inside one vintage
+proves nothing about the vintage table.
 """
 
 from __future__ import annotations
@@ -67,9 +67,9 @@ SCALE = 0.01
 CONFIG_YAML = """
 backend: synthetic
 services: [yellow, green, fhvhv]
-start: 2021-12-01
-end: 2022-01-01
-detail_month: 2021-12-01
+start: 2021-03-01
+end: 2021-04-01
+detail_month: 2021-03-01
 duckdb_memory_limit: 1GB
 duckdb_threads: 2
 shipped_file_budget_mb: 95.0
@@ -426,7 +426,7 @@ def test_every_month_was_reported_to_the_progress_callback(built: Built) -> None
 
 
 def test_each_month_maps_to_the_vintage_its_period_names(built: Built) -> None:
-    """The airport fee arrives in the yellow and for hire files in January 2022
+    """The airport fee arrives in the yellow and for hire files in April 2021
     and not in the green ones, so exactly those two services cross a boundary
     inside this window. Asserting which ones is what makes this a test of the
     vintage table rather than of the fact that it has more than one row."""
@@ -587,21 +587,21 @@ def test_the_naive_tip_rate_understates_the_correct_one(built: Built) -> None:
 
 
 def test_a_column_that_did_not_exist_yet_is_null_and_not_zero(built: Built) -> None:
-    """The airport fee arrives in January 2022. December has to be null, not
+    """The airport fee arrives in April 2021. March has to be null, not
     zero: zero says the fee was charged and came to nothing, the series shows a
     flat line running into a step, and somebody eventually explains that step."""
-    december = _scalar(
+    march = _scalar(
         built.connection,
         "select count(*) from stg_trip "
-        "where source_period = date '2021-12-01' and airport_fee is not null",
+        "where source_period = date '2021-03-01' and airport_fee is not null",
     )
-    assert december == 0
-    january = _scalar(
+    assert march == 0
+    april = _scalar(
         built.connection,
         "select count(*) from stg_trip "
-        "where source_period = date '2022-01-01' and airport_fee is not null",
+        "where source_period = date '2021-04-01' and airport_fee is not null",
     )
-    assert january > 0
+    assert april > 0
 
     # Green never carried the column at all, in either month, which is a
     # different fact from the column arriving and is recorded separately.
@@ -615,8 +615,8 @@ def test_a_column_that_did_not_exist_yet_is_null_and_not_zero(built: Built) -> N
         "select source_period, null_share from mart_null_rates "
         "where column_name = 'airport_fee' and service = 'yellow' order by 1"
     ).fetchall()
-    assert yellow[0] == (dt.date(2021, 12, 1), 1.0)
-    assert yellow[1][0] == dt.date(2022, 1, 1)
+    assert yellow[0] == (dt.date(2021, 3, 1), 1.0)
+    assert yellow[1][0] == dt.date(2021, 4, 1)
     assert yellow[1][1] < 1.0
 
     # The CBD fee is later than both months, so it is absent throughout.
@@ -636,7 +636,7 @@ def test_the_shipped_layer_summarizes_rather_than_copies(published: Built) -> No
     names = {r.name for r in results}
     assert "agg_zone_hour.parquet" in names
     assert "agg_hour_of_week.parquet" in names
-    assert "detail_2021_12.parquet" in names
+    assert "detail_2021_03.parquet" in names
     for result in results:
         assert result.path.is_file()
         assert result.rows > 0, result.name
@@ -812,7 +812,7 @@ def test_the_manifest_carries_every_claim_a_document_needs(published: Built) -> 
     missing = [c for c in REQUIRED_CLAIMS if claims.get(c) is None]
     assert missing == [], f"claims missing or null: {missing}"
 
-    assert data["window"]["start"] == "2021-12-01"
+    assert data["window"]["start"] == "2021-03-01"
     assert data["backend"] == ["synthetic"]
     assert claims["source_rows"] == published.report.source_rows
     assert claims["clean_rows"] == published.report.clean_rows
@@ -996,7 +996,7 @@ def test_the_manifest_command_writes_where_the_gate_reads(published: Built) -> N
 
     written = json.loads(published.paths.manifest.read_text(encoding="utf-8"))
     assert written["claims"]["source_rows"] == published.report.source_rows
-    assert written["window"]["detail_month"] == "2021-12-01"
+    assert written["window"]["detail_month"] == "2021-03-01"
 
 
 def test_the_doctor_command_sees_the_tree_this_module_built(published: Built) -> None:

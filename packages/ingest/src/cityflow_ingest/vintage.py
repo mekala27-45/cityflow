@@ -12,8 +12,15 @@ column names, and which optional columns exist in it. A file that does not
 match its vintage's expected columns fails the ingest with the difference
 printed, rather than producing nulls nobody notices.
 
-The dates below are the month a column first appears in a published file, not
-the month the rule took effect. Those differ, and the file is what we read.
+The dates below are the month a column first carries values in the published
+files, not the month the rule took effect and not the month the column first
+appears in them. All three differ, and the files are what we read. The airport
+fee shows why: the parquet the TLC republished in 2022 carries an airport_fee
+column back to 2019, empty until March 2021, zero in that month, and charged
+from April 2021. This table first dated it to January 2022, from the data
+dictionary; a census of the column in every published file (`cityflow probe
+--census airport_fee`) moved it to April 2021 before a real build could null
+nine months of fees the riders paid.
 """
 
 from __future__ import annotations
@@ -165,7 +172,7 @@ VINTAGES: tuple[Vintage, ...] = (
         name="yellow_v3_congestion",
         service="yellow",
         first=dt.date(2019, 2, 1),
-        last=dt.date(2021, 12, 1),
+        last=dt.date(2021, 3, 1),
         pickup_column="tpep_pickup_datetime",
         dropoff_column="tpep_dropoff_datetime",
         pu_zone_column="PULocationID",
@@ -181,7 +188,7 @@ VINTAGES: tuple[Vintage, ...] = (
     Vintage(
         name="yellow_v4_airport_fee",
         service="yellow",
-        first=dt.date(2022, 1, 1),
+        first=dt.date(2021, 4, 1),
         last=dt.date(2024, 12, 1),
         pickup_column="tpep_pickup_datetime",
         dropoff_column="tpep_dropoff_datetime",
@@ -291,7 +298,7 @@ VINTAGES: tuple[Vintage, ...] = (
         name="fhvhv_v1",
         service="fhvhv",
         first=dt.date(2019, 2, 1),
-        last=dt.date(2021, 12, 1),
+        last=dt.date(2021, 3, 1),
         pickup_column="pickup_datetime",
         dropoff_column="dropoff_datetime",
         pu_zone_column="PULocationID",
@@ -316,7 +323,7 @@ VINTAGES: tuple[Vintage, ...] = (
     Vintage(
         name="fhvhv_v2_airport_fee",
         service="fhvhv",
-        first=dt.date(2022, 1, 1),
+        first=dt.date(2021, 4, 1),
         last=dt.date(2024, 12, 1),
         pickup_column="pickup_datetime",
         dropoff_column="dropoff_datetime",

@@ -112,8 +112,8 @@ def test_every_month_since_zone_ids_resolves_to_exactly_one_vintage() -> None:
 def test_the_day_of_the_month_does_not_change_the_vintage() -> None:
     """A period is a month. Handing resolve_vintage the 28th must not fall off
     the end of a range that closes on the first."""
-    assert resolve_vintage("yellow", dt.date(2021, 12, 28)).name == "yellow_v3_congestion"
-    assert resolve_vintage("yellow", dt.date(2022, 1, 31)).name == "yellow_v4_airport_fee"
+    assert resolve_vintage("yellow", dt.date(2021, 3, 28)).name == "yellow_v3_congestion"
+    assert resolve_vintage("yellow", dt.date(2021, 4, 30)).name == "yellow_v4_airport_fee"
 
 
 def test_a_month_before_the_service_existed_is_refused() -> None:
@@ -157,8 +157,12 @@ def test_the_surcharge_history_is_the_published_one() -> None:
     so a typo in a range is caught by something other than a reviewer."""
     assert not resolve_vintage("yellow", dt.date(2019, 1, 1)).has_congestion_surcharge
     assert resolve_vintage("yellow", dt.date(2019, 2, 1)).has_congestion_surcharge
-    assert not resolve_vintage("yellow", dt.date(2021, 12, 1)).has_airport_fee
-    assert resolve_vintage("yellow", dt.date(2022, 1, 1)).has_airport_fee
+    # April 2021, from a census of the column in every published file: empty
+    # before March 2021, zero in March, the fee charged from April.
+    assert not resolve_vintage("yellow", dt.date(2021, 3, 1)).has_airport_fee
+    assert resolve_vintage("yellow", dt.date(2021, 4, 1)).has_airport_fee
+    assert not resolve_vintage("fhvhv", dt.date(2021, 3, 1)).has_airport_fee
+    assert resolve_vintage("fhvhv", dt.date(2021, 4, 1)).has_airport_fee
     assert not resolve_vintage("green", dt.date(2024, 12, 1)).has_cbd_congestion_fee
     assert resolve_vintage("green", dt.date(2025, 1, 1)).has_cbd_congestion_fee
 

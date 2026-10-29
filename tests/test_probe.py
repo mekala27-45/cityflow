@@ -263,7 +263,7 @@ def test_a_census_reads_one_column_and_counts_what_it_holds(
 ) -> None:
     """The question a footer cannot answer: does a column the vintage table
     dates later already carry a fee, or only zeros?"""
-    spec = SourceSpec(service="yellow", year=2021, month=12)
+    spec = SourceSpec(service="yellow", year=2021, month=2)
     path = tmp_path / spec.filename
     columns = sorted(vintage_columns(spec))
     select = ", ".join(f'cast(i as double) as "{name}"' for name in columns)
@@ -279,7 +279,7 @@ def test_a_census_reads_one_column_and_counts_what_it_holds(
     assert (result.census.non_null, result.census.non_zero) == (4, 2)
     assert (result.census.minimum, result.census.maximum) == (0.0, 1.25)
     assert census_lines([result]) == [
-        "yellow:2021-12 Airport_fee: 4 of 8 rows carry a value, 2 non zero, 0 to 1.25"
+        "yellow:2021-02 Airport_fee: 4 of 8 rows carry a value, 2 non zero, 0 to 1.25"
     ]
     assert result.ranges == (("Airport_fee", 0.0, 1.25),)
 
@@ -427,10 +427,10 @@ def test_the_annotation_script_runs_as_a_script(
 def test_a_column_present_but_never_filled_is_reported_as_all_null(
     connection: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:
-    """The 2021 yellow files already carry an airport_fee column, a year before
+    """The 2020 yellow files already carry an airport_fee column, months before
     the vintage table dates the fee. Whether that column holds anything decides
     whether the dating is right, and the footer statistics answer it."""
-    months = [SourceSpec(service="yellow", year=2021, month=m) for m in (11, 12)]
+    months = [SourceSpec(service="yellow", year=2020, month=m) for m in (11, 12)]
     for spec in months:
         columns = vintage_columns(spec) | {"airport_fee"}
         empty = {"airport_fee", "congestion_surcharge"} if spec.month == 11 else {"airport_fee"}
@@ -450,7 +450,7 @@ def test_an_unexpected_column_that_carries_values_says_how_many_rows(
 ) -> None:
     """Present and filled is a different finding from present and empty: it
     means the vintage table dates the column later than the files do."""
-    months = [SourceSpec(service="fhvhv", year=2021, month=m) for m in (11, 12)]
+    months = [SourceSpec(service="fhvhv", year=2020, month=m) for m in (11, 12)]
     for spec in months:
         empty = {"airport_fee"} if spec.month == 11 else set()
         write_file(
@@ -469,9 +469,9 @@ def test_an_unexpected_column_that_carries_values_says_how_many_rows(
 
 def test_a_month_without_null_counts_makes_the_total_unknown() -> None:
     probe = FileProbe(
-        source="yellow:2021-12",
+        source="yellow:2021-02",
         service="yellow",
-        period="2021-12",
+        period="2021-02",
         location="x",
         vintage="yellow_v3_congestion",
         published=True,
