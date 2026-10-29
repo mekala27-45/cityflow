@@ -389,14 +389,15 @@ procedure finds next to nothing, the surviving set empty. The published files
 are a city, where who rides from a zone, where to and how they pay all vary by
 neighbourhood, and the zones genuinely differ.
 
-What changes with real data is what significance is worth. Behind most zones
-sit hundreds of thousands of observable trips, and at that size a difference of
-a fraction of a point clears any threshold. A surviving comparison here means
-the difference is real, not that it is large, so the panel leads with the size
-of each zone's difference from its service's rate and the Wilson interval around
-it, and keeps the corrected verdict beside it rather than in front of it. A
-panel that ranked zones by p value at these counts would be ranking them by how
-many trips they have.
+What changes with real data is what significance is worth. The family mixes
+very different sample sizes: the median for hire zone has millions of
+observable trips, the median green zone a few hundred. Behind the largest, a
+difference of a few hundredths of a point clears any threshold, so a surviving
+comparison means the difference is real, not that it is large. The panel
+therefore leads with the size of each zone's difference from its service's rate
+and the Wilson interval around it, and keeps the corrected verdict beside it
+rather than in front of it. A panel that ranked zones by p value at these counts
+would be ranking them by how many trips they have.
 
 ## The palette validator
 

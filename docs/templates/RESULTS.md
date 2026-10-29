@@ -69,7 +69,8 @@ would be the easy version and it would bias every citywide total downwards.
 {{ n:cash_trips }} trips were settled in cash, which is
 {{ f2:cash_share_of_metered_pct }} percent of metered trips. Each records a tip
 of zero because no tip passed through the meter. `tip_pct` is NULL on
-{{ n:tip_pct_null_rows }} rows for that reason and is never zero, and three
+{{ n:tip_pct_null_rows }} rows, the cash trips and every other payment that
+cannot carry a tip, and is never zero, and three
 singular dbt tests hold that line: no `tip_pct` on an unobservable payment, no
 zero `tip_pct` on a cash trip, and the fact table row count matching staging so
 a filter cannot quietly remove the population being argued about.
@@ -208,8 +209,8 @@ read is a file read. The Playwright smoke test counts the range requests
 DuckDB-WASM issues in the browser and `scripts/bench_queries.py` folds that log
 into the table above. Over the {{ n:bench_browser_queries }} panel queries whose
 browser traffic was captured, DuckDB-WASM pulled
-{{ f2:bench_browser_bytes }} bytes in {{ n:bench_browser_requests }} range
-requests from files totalling {{ f2:bench_browser_file_bytes }} bytes on disk.
+{{ n:bench_browser_bytes }} bytes in {{ n:bench_browser_requests }} range
+requests from files totalling {{ n:bench_browser_file_bytes }} bytes on disk.
 That is {{ f1:bench_browser_fetched_pct }} percent of the bytes those files
 contain, and zero whole file reads.
 
@@ -248,10 +249,12 @@ a per file limit would be dodging the budget rather than meeting it. The
 interface says which services the drill down covers.
 
 **`service_zone` is derived, not sourced.** It comes from borough plus the
-three airport zone ids rather than from the official lookup file, which this
-machine could not fetch. `docs/data.md` states the derivation.
+three airport zone ids rather than from the TLC's lookup file, which the
+machine this repository was written on could not fetch. `docs/data.md` states
+the derivation.
 
 **The trend, the seasonal decomposition and the changepoints describe this
-window only.** {{ n:months }} months is enough for a weekly seasonal and a
-trend. It is not enough to say anything about annual seasonality, and this
-document does not.
+window only.** The decomposition models a weekly cycle and a trend, and the
+annual cycle stays inside the trend: {{ n:months }} months is four of them, the
+first spent in the recovery, which is too few to separate one from the other,
+and this document does not try.

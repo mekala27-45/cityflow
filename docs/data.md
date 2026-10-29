@@ -41,39 +41,49 @@ rows went does not get to describe itself as clean.
 
 Every row of `source_audit` records the backend that produced it, and the build
 manifest carries the distinct set of names it found there. For the figures in
-this repository right now, that is `tlc`. It is derived from the
-audit table rather than from the config file, so a warehouse assembled from more
-than one backend would say so here instead of presenting a blend as though it
-came from one place.
+this repository right now, that is `tlc`: the trip record parquet
+the TLC publishes, 144 files and 24.1 GB, read
+over HTTPS by `.github/workflows/refresh.yml` on a GitHub Actions runner,
+because the machine this repository was written on cannot reach the host. It is
+derived from the audit table rather than from the config file, so a warehouse
+assembled from more than one backend would say so here instead of presenting a
+blend as though it came from one place.
 
-When that includes `synthetic`, the figures on this page and on the dashboard
-were measured on data produced by the seeded generator in
-`packages/ingest/src/cityflow_ingest/synthetic.py`, and not on the published TLC
-files. The seed is `20260916`, fixed, so the same window
-rebuilds to the same numbers.
+**What the build learned before it read a row.** The workflow runs `cityflow
+probe` first, which reads every file's parquet footer (schema, row groups, null
+counts, the range of every column) and compares the columns with the vintage
+table below, without downloading a file. Against the published files it found
+two things no fixture could have shown.
 
-**What the generator reproduces.** The schema and its defects. It writes parquet
-carrying the exact column names of the vintage it is asked for, so the per
-vintage mapping in the next section is exercised by the generator rather than
-bypassed by it. It injects each of the defects the quarantine rules catch, at
-the configured rates tabulated below. It
-reproduces the shape of demand well enough for the panels to be worth looking
-at: separate weekday and weekend hour profiles, a day of week effect, a monthly
-seasonal factor, a slow secular drift, a holiday dip read from the same seed
-`dim_date` reads, and a speed by hour curve that gives the duration ridgeline a
-reason to exist.
+The first is a spelling. From February 2023 the yellow files call the airport
+fee `Airport_fee`. DuckDB binds column names without regard to case, so the
+normalizer read it, but the schema check compared names exactly and would have
+stopped a real build at that month, more than halfway through its downloads.
+The check now compares names the way DuckDB binds them and still reports the
+difference, and the generator writes the published spelling, so CI meets it
+too.
 
-**What the generator does not reproduce.** Real trip volumes. Real fares. Real
-geography of demand beyond a borough level gradient and a named ordering of busy
-zones. Any finding whatsoever about New York City. A tip rate computed here is a
-correct computation over generated numbers, and the thing it demonstrates is the
-computation, not the city.
+The second is a date. The vintage table had the airport fee arriving in January
+2022. The footers showed the column present, and filled, through 2021, so the
+probe grew a census: `--census airport_fee` reads that one column of every file,
+through projection pushdown, and counts its non null and non zero values. The
+column is all but empty in every file from 2019 to February 2021, holds only
+zeros in March, and carries the fee from April 2021, in the yellow and the for
+hire files alike. A build on the old table would have modelled every fee charged
+from April to December 2021 as NULL and published a schema change that never
+happened. The table now dates both vintages to April 2021, and the window opens
+in January 2021 so the real change sits inside it.
 
-**The injected defect rates.** These are read out of the same config object the
-generator read, so the table below cannot disagree with the pipeline. Each
-entry's name is the name of the quarantine rule that catches it, except
-`unknown_zone`, which is not a quarantine rule at all and has its own section
-below.
+**The generator.** `synthetic` is the other backend: a seeded generator in
+`packages/ingest/src/cityflow_ingest/synthetic.py` that reproduces the schema
+and its defects, not the city. CI builds it end to end on every push, at a scale
+that finishes in a minute, and every quarantine rule is tested against it,
+because a rule needs a fixture that contains the defect it claims to catch at a
+known rate. It writes parquet carrying the exact column names of each vintage,
+spelled the way the published file of that month spells them, and injects each
+defect from disjoint bands of one uniform variate, so a row carries at most one.
+None of the rates below describe the published figures; they describe the
+fixture the rules are tested on.
 
 | injected defect | rate |
 | --- | --- |
@@ -86,53 +96,24 @@ below.
 | `exact_duplicate` | 0.004 percent |
 | `unknown_zone` (kept, not quarantined) | 1.460 percent |
 
-They are chosen to sit in the same order of magnitude as the rates in the real
-files, so the quarantine panel is not a cartoon. They are drawn from disjoint
-bands of one uniform variate, so a row carries at most one injected defect and
-the realised rate of each is the configured rate rather than the configured rate
-conditioned on the others not firing.
+The generator also plants one level shift in daily volume on
+2024-08-12, so the changepoint detector has a known answer to
+be scored against on the fixture, and it applies its monthly seasonal factor as
+a step at each month boundary, which real demand does not do. Both are
+properties of the fixture. On the published files there is no planted shift and
+no step at midnight on the first; the detector, unchanged, finds what the city
+did.
 
-**There is a planted level shift.** The generator applies a step change to daily
-volume on 2024-08-12, so that the changepoint detector has
-something real to find and the annotation on the chart can be checked against a
-known answer. The step is -3.0 percent on yellow,
--1.0 percent on green, and
--12.0 percent on for hire vehicles, which is the arm
-large enough to be worth detecting. If you find a level shift in the generated
-series on or near that date, that is this constant and it is not a finding. What the detector did with it is in
-[statistics.md](statistics.md), and it is the only check in this pipeline with a
-known right answer.
+**Where trips start.** On the published files the busiest pickup zone is
+JFK Airport, and 50 zones account for
+half of all trips with a resolved pickup. Those are measurements now. On the
+generator they were a person's opinion about the city crossed with a Zipf fall
+off, which is why this page used to say so at length.
 
-**The monthly seasonal factor is applied as a step at each month boundary.**
-Real demand does not jump on the first of the month; it drifts. The generator
-multiplies each day by a factor chosen per calendar month, which means volume
-changes discontinuously at midnight on the first and then holds flat for the
-rest of the month. This is the most consequential artefact in the generated
-series, because it is exactly the shape a changepoint detector is built to find.
-It is the reason most of the annotated changepoints on this build sit within a
-few days of a month boundary, and the reason the changepoint panel on generated
-data is largely a picture of this paragraph. On the real files the same
-detector, unchanged, has no such artefact to find.
-
-**The zone ordering is judgement, not measurement.** The generator has to decide
-which zones are busy. A hash is defensible and reproducible, and the first
-attempt at it put Governor's Island fourth busiest in Manhattan. Anyone who has
-stood on a corner in this city sees that immediately, and once a reader sees one
-thing that is obviously wrong they stop trusting the rest of the chart. So the
-busy zones are named by hand in `PRIORITY_ZONES`, the tail is ordered by a fixed
-hash rather than by zone id (the TLC numbered its zones alphabetically, and
-ranking by id produces a choropleth that is a gradient from Alphabet City to
-Yorkville, an artefact that looks exactly like a finding), and a list of parks,
-cemeteries and islands is held down by a multiplier. The volumes are generated.
-The ordering is a person's opinion about the city. On this build the busiest
-pickup zone is JFK Airport, and 50 zones
-account for half of all trips with a resolved pickup: both of those are
-properties of that opinion crossed with a Zipf fall off, not of New York.
-
-To build against the real files instead, set `CITYFLOW_BACKEND=tlc` or run
-`make ingest-tlc`, and read [runbook.md](runbook.md) first. The backend name is
-printed on every report and written on every audit row precisely so that a
-figure measured on generated data cannot be quoted without its label.
+To build against the generator instead, set `CITYFLOW_BACKEND=synthetic` or run
+`make ingest-synthetic`, and read [runbook.md](runbook.md) first. The backend
+name is printed on every report and written on every audit row precisely so that
+a figure measured on generated data cannot be quoted without its label.
 
 ## The per vintage schema mapping
 
@@ -163,19 +144,20 @@ about needing a spatial join rather than half supported.
 | `yellow_v1_coordinates` | yellow | raw pickup and dropoff coordinates, no zone ids. Refused. |
 | `yellow_v2_zones` | yellow | zone ids arrive. The first vintage this project can read. |
 | `yellow_v3_congestion` | yellow | `congestion_surcharge` appears. |
-| `yellow_v4_airport_fee` | yellow | `airport_fee` appears. |
+| `yellow_v4_airport_fee` | yellow | `airport_fee` is charged, from April 2021. The column is in the files from 2019, empty. Spelled `Airport_fee` from February 2023. |
 | `yellow_v5_cbd` | yellow | `cbd_congestion_fee` appears. |
 | `green_v1_coordinates` | green | as yellow v1, with `lpep_` timestamp prefixes. Refused. |
 | `green_v2_zones` | green | zone ids arrive. |
 | `green_v3_congestion` | green | `congestion_surcharge` appears. |
 | `green_v4_cbd` | green | `cbd_congestion_fee` appears. Green never gets an airport fee. |
 | `fhvhv_v1` | fhvhv | no passenger count, rate code, payment type or total. `bcf` and `sales_tax` instead. |
-| `fhvhv_v2_airport_fee` | fhvhv | `airport_fee` appears. |
+| `fhvhv_v2_airport_fee` | fhvhv | `airport_fee` is charged, from April 2021, the same month as yellow. |
 | `fhvhv_v3_cbd` | fhvhv | `cbd_congestion_fee` appears. |
 
-The date boundaries are in the code, one per vintage, and they are the month a
-column first appears **in a published file**, not the month the rule took
-effect. Those two differ, and the file is what we read.
+The date boundaries are in the code, one per vintage, and each is the first
+month a column carries values **in a published file**: not the month the rule
+took effect, and not the month an empty column was added to the schema. All
+three can differ, as the airport fee shows, and the values are what we read.
 
 Every vintage maps onto one canonical row, `CANONICAL_COLUMNS` in
 `normalize.py`, and nothing downstream reads a vintage column name. The staging
@@ -267,22 +249,15 @@ reads a column that only some vintages carry. If you want a per population rate,
 `mart_quarantine` carries `source_rows` per service and per period and the data
 health panel cuts it that way.
 
-Of the twelve defined rules plus the duplicate check,
-12 fired over this window. The ones that never fired
-are `null_timestamp`,
-`duration_too_short`, `fare_too_large` and `negative_component`, and that is a
-statement about the fixture rather than about the rules. The generator injects
-no null timestamps, no sub minimum durations, no absurd fares and no negative
-components, so those four have nothing to catch here. On the published files all
-four fire. A rule with a zero count is not evidence that the rule is
-unnecessary; it is evidence about the data it was pointed at, and this is the
-kind of thing a generated fixture cannot tell you.
-
-Two rules fired on rows nobody planted. `duration_too_long` and
-`distance_too_long` caught the tail of the generated distance and duration
-distributions rather than an injected defect, which is a small piece of evidence
-that the rules are catching a class of row and not just the exact shape of the
-thing that was put in front of them.
+12 of the 13 rules,
+the duplicate check among them, fired over this window. The ones that caught
+nothing are named here rather than counted: `null_timestamp`.
+A rule with a zero count is not evidence that the rule is unnecessary; it is
+evidence about the data it was pointed at. On the generator the silent rules are
+the defects it never injects, which says something about the fixture and nothing
+about the rules, and it is the reason the rule set is run against both: the
+fixture proves each rule catches what it claims at a known rate, and the
+published files show which of those defects the city's meters actually produce.
 
 ## The tip trap
 
@@ -302,8 +277,7 @@ average `tip_amount / fare_amount` over all of them, you get
 payment channel actually records a tip, you get 25.93
 percent. The correct figure is 28.0 percent
 higher than the naive one. That is the gap between a number that looks fine and
-a number that is right, and it is roughly the gap between most published New
-York tip rates and the truth.
+a number that is right.
 
 So the modelling decision is: **null, not zero.**
 
@@ -345,8 +319,8 @@ the same number, and only one of them takes a Wilson interval. See
 
 The TLC's zone ids 264 and 265 mean the location could not be determined. 264 is
 labelled Unknown and 265 is Outside of NYC. They are not a data quality problem
-to be cleaned away. They are the single most common way a New York taxi analysis
-goes quietly wrong.
+to be cleaned away. They are an easy way for a New York taxi analysis to go
+quietly wrong.
 
 On this build they carry 36,477,941 trips, which is
 3.63 percent of the fact table. Those trips are real.
@@ -384,20 +358,23 @@ wants to know how much of the city is missing from the map is told, on the map.
 
 ## The shapefile
 
-The official TLC taxi zone shapefile does not contain one polygon per zone id,
-and assuming it does breaks a warehouse in a way that does not error.
+A zone shapefile need not contain one polygon per zone id, and assuming it does
+breaks a warehouse in a way that does not error.
 
-It holds 263 polygon records covering
-263 distinct zone ids. 0 zones are
-split across several records, accounting for
-0 of those records between them: Corona is two
-polygons, and the three harbour islands are three.
-0 ids that the trip records can and do reference
-have no polygon at all, because the mapping folded them into their neighbours:
-57, 104 and 105. Add the two unknown codes and `dim_zone` holds
+The copy the published build fetched holds 263
+polygon records covering 263 distinct zone ids;
+0 zones are split across several records, and
+0 ids that the trip records can reference have no
+polygon. Add the two unknown codes and `dim_zone` holds
 265 rows, which is every id the TLC publishes, while
 `zones.geojson` carries 263 features, one per id that has a
 shape to draw.
+
+The older copy the first builds read did not have one polygon per id. Two of
+its polygons carried Corona's id 56 and three carried the harbour islands' 103,
+while 57, 104 and 105, which name the same places, had none.
+`tests/fixtures/zone_reference_older_copy.csv` records that layout, and the
+tests of the dissolve and of the zones with no polygon are built from it.
 
 **What went wrong before it was fixed.** The zone reference was published one row
 per shapefile record. The two multi part zones therefore appeared two and three
@@ -408,23 +385,34 @@ errored. Nothing looked wrong. Every total was simply slightly too high, in a
 direction and a magnitude that no eyeball would catch, and only a row count
 comparison would ever have said so.
 
-**How it was fixed.** `prepare_zones` gathers every polygon record under its zone
-id first, dissolves the parts with `unary_union`, and emits one row per zone. The
-three geometryless ids are emitted explicitly from `GEOMETRYLESS_ZONE_IDS`,
-carrying their real name and borough with `has_geometry` false. That distinction
-matters and `dim_zone.sql` spells it out: a zone with no geometry is a real place
-whose trips have a known location that simply cannot be drawn, while an unknown
-code is a trip whose location was never resolved. Counting the first as the
-second would overstate the unresolved share.
+**How it was fixed.** `prepare_zones` gathers every polygon record under its
+zone id first, dissolves the parts with `unary_union`, and emits one row per
+zone. An id in `GEOMETRYLESS_ZONE_IDS` that the file has no polygon for is
+emitted explicitly, carrying its real name and borough with `has_geometry`
+false. That distinction matters and `dim_zone.sql` spells it out: a zone with no
+geometry is a real place whose trips have a known location that simply cannot be
+drawn, while an unknown code is a trip whose location was never resolved.
+Counting the first as the second would overstate the unresolved share.
 
 Three guards keep it fixed. `assert_fct_trip_zone_join_does_not_fan` rebuilds the
 zone join on its own and asserts it does not change the row count, deliberately
 rebuilt rather than read off `fct_trip` so a failure points at the dimension and
-not at the incremental predicate. `assert_dim_zone_counts` asserts the two counts
-as written out literals, so that a change in the geometry step which drops or
-splits a zone is a deliberate edit with a reason in a commit message rather than
-a map with a hole in it that nobody can date. And `part_count` is carried into
-`dim_zone`, so a zone that gains a part is visible rather than inferred.
+not at the incremental predicate. `assert_dim_zone_counts` asserts that
+`dim_zone` holds every id from 1 to 265 once and that no zone outside a written
+out list, 57, 104 and 105 and the two unknown codes, lacks a polygon, so that a
+change in the geometry step which drops or splits a zone is a deliberate edit
+with a reason in a commit message rather than a map with a hole in it that
+nobody can date. And `part_count` is carried into `dim_zone`, so a zone that
+gains a part is visible rather than inferred.
+
+**The seed is the reference.** `cityflow zones` writes the reference twice: to
+`data/reference/dim_zone.csv`, which the fixture builder and the generator
+read, and to the dbt seed `transform/seeds/zone_lookup.csv`, which the
+warehouse's `dim_zone` is built from. The seed used to be a separate committed
+copy, so the first full build over the published files drew the current
+shapefile's polygons over a dimension that still described the older copy.
+Review caught it before merge, and the refresh pull request now carries both
+files.
 
 Three more decisions in that step are worth knowing. The simplification runs in
 the source projection, EPSG:2263, in US survey feet, before reprojection to
@@ -451,10 +439,11 @@ in a slide. NULL says "not collected", which is what happened.
 window starts where it does. `mart_null_rates` watches it per service and per
 source period, and reports 54 service months in
 which the column is entirely null. The first period in which it carries a value
-is April 2021, which is the month the column appears
-in the published files. That step is visible on the null rate panel as a step,
-not averaged away, because the mart counts per period rather than over the
-window.
+is April 2021, the month the fee was first charged;
+the column itself is in the published files from 2019, all but empty for two
+years, and in the month before the fee it carries nothing but zeros. That step
+is visible on the null rate panel as a step, not averaged away, because the mart
+counts per period rather than over the window.
 
 The last service month in which `airport_fee` is entirely null is
 December 2024, which is the last month of the window,

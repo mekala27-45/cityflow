@@ -264,8 +264,7 @@ average `tip_amount / fare_amount` over all of them, you get
 payment channel actually records a tip, you get {{ f2:tip_rate_correct_pct }}
 percent. The correct figure is {{ f1:tip_rate_understatement_pct }} percent
 higher than the naive one. That is the gap between a number that looks fine and
-a number that is right, and it is roughly the gap between most published New
-York tip rates and the truth.
+a number that is right.
 
 So the modelling decision is: **null, not zero.**
 
@@ -307,8 +306,8 @@ the same number, and only one of them takes a Wilson interval. See
 
 The TLC's zone ids 264 and 265 mean the location could not be determined. 264 is
 labelled Unknown and 265 is Outside of NYC. They are not a data quality problem
-to be cleaned away. They are the single most common way a New York taxi analysis
-goes quietly wrong.
+to be cleaned away. They are an easy way for a New York taxi analysis to go
+quietly wrong.
 
 On this build they carry {{ n:unknown_zone_trips }} trips, which is
 {{ f2:unknown_zone_share_pct }} percent of the fact table. Those trips are real.

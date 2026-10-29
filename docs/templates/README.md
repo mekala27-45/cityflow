@@ -96,20 +96,18 @@ Nothing here is typed by hand.
   TLC trip record parquet, yellow + green + for hire, or the seeded generator
         |  ingest        per vintage schema mapping, quarantine, one month at a time
         v
-  warehouse.duckdb  (local, gitignored, {{ f1:fct_trip_rows }} rows at trip grain)
+  warehouse.duckdb       local, gitignored, every trip at trip grain
         |  dbt staging   typing, derivation, the quarantine marts
         |  dbt marts     star schema, fct_trip incremental by month
         v
   +--------------------------------------------------------------+
-  |  fct_trip                 the grain, {{ n:fct_trip_rows }} rows |
+  |  fct_trip, the grain                                          |
   |  dim_zone  dim_date  dim_hour  dim_service  dim_ratecode      |
   +---------------------------+----------------------------------+
                               |  publish
                               v
   +--------------------------------------------------------------+
   |  SHIPPED LAYER, what the browser can reach                    |
-  |  {{ n:shipped_files }} files, {{ f1:shipped_mb }} MB total,    |
-  |  largest {{ f1:largest_shipped_mb }} MB                        |
   |  additive components only, never a rate                       |
   +---------------------------+----------------------------------+
                               |  HTTP range requests
@@ -121,8 +119,9 @@ Nothing here is typed by hand.
 ```
 
 {{ n:fct_trip_rows }} rows at trip grain are summarized into
-{{ f1:shipped_mb }} MB that the browser queries, which is
-{{ f0:summarization_ratio }} source rows for every megabyte shipped. The detail lives in
+{{ f1:shipped_mb }} MB that the browser queries, {{ n:shipped_files }} files
+with the largest at {{ f1:largest_shipped_mb }} MB, which is
+{{ f0:summarization_ratio }} trips for every megabyte shipped. The detail lives in
 the warehouse and the browser queries conformed aggregates. That is not a
 workaround for a static host, it is how BI works, and
 [ARCHITECTURE.md](ARCHITECTURE.md) says why at length because it is the question
@@ -170,10 +169,11 @@ imported. And {{ n:zone_comparisons }} zone comparisons corrected with
 Benjamini-Hochberg: {{ n:zone_comparisons_naive_significant }} of them are
 significant at an uncorrected five percent threshold, against
 {{ f0:zone_comparisons_expected_by_chance }} that would be by chance alone, and
-{{ n:zone_comparisons_after_bh }} survive the correction. With millions of trips
-behind most zones, a difference too small to matter is still significant, so
-the panel puts the size of each difference and its interval first and the
-comparison count on screen. [docs/statistics.md](docs/statistics.md) has the
+{{ n:zone_comparisons_after_bh }} survive the correction. The zones genuinely
+differ, most of them by points rather than fractions of a point, and behind the
+busiest, with millions of observable trips, even a difference of a few
+hundredths of a point is significant. So the panel puts the size of each
+difference and its interval first and the comparison count on screen. [docs/statistics.md](docs/statistics.md) has the
 argument.
 
 **The schema change.** The window spans the month the airport fee is first

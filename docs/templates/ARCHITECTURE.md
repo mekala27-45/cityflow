@@ -362,7 +362,7 @@ The constraint is visible in the design rather than bolted onto it.
 
 The result is {{ n:fct_trip_rows }} fact rows summarised into
 {{ f2:shipped_mb }} MB across {{ n:shipped_files }} files, which is
-{{ f0:summarization_ratio }} source rows for every megabyte a reader downloads.
+{{ f0:summarization_ratio }} fact rows for every megabyte a reader downloads.
 The per file breakdown is in [RESULTS.md](RESULTS.md).
 
 ## Where each gate sits
