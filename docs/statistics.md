@@ -284,8 +284,8 @@ statistical one and makes it impossible to report how much was discarded.
 
 Which is the point of reporting it. On this build PELT found
 35 candidates, of which
-25 moved the level by less than the floor
-and are not drawn, leaving 10 annotations on the
+4 moved the level by less than the floor
+and are not drawn, leaving 31 annotations on the
 chart. Publishing all three counts is what lets a reader judge the floor
 instead of trusting it: if the discarded share ever looks too large, the floor
 is too high and the number is on the page that says so.
@@ -299,9 +299,9 @@ stayed there" is one, and it is checkable.
 is an argument. This is a measurement. The generator plants a single level shift
 in for hire volume on 2024-08-12, a step of
 -12.0 percent. The detector placed a changepoint
-1 day away from that date, and measured the
+45 day away from that date, and measured the
 step over the surrounding four weeks at
--7.59 percent.
+-6.38 percent.
 
 Both halves of that result are worth reading. The location is essentially exact,
 which is what an STL trend plus an L2 cost should give on a step of this size.
@@ -382,15 +382,15 @@ corrected set rather than being displayed, and every zone that reaches it has
 cleared that minimum. The number a reader actually sees is the Wilson interval,
 which is the one that has to be right at small counts.
 
-**What the correction actually did on this build.** 757
-comparisons were run, of which 25 cross
+**What the correction actually did on this build.** 738
+comparisons were run, of which 706 cross
 an uncorrected five percent threshold. On a family of that size, if no zone
-differed at all, 38 would be expected
+differed at all, 37 would be expected
 to cross it from noise alone. Surviving Benjamini-Hochberg:
-0.
+705.
 
 That is the correct answer, and it is worth sitting with rather than explaining
-away. This build ran on the `synthetic` backend, where a trip's tip is
+away. This build ran on the `tlc` backend, where a trip's tip is
 drawn from a distribution that depends on the payment channel and the fare and
 on nothing else: it has no zone term at all. There is no zone level tipping
 effect in this data, so there is nothing for the procedure to find, and it finds
@@ -407,7 +407,7 @@ of anything.
 
 The panel showing an empty surviving set is the statistics working. A panel that
 instead highlighted every uncorrected result would be handing a reader
-25 coin flips and calling them
+706 coin flips and calling them
 neighbourhoods.
 
 ## The palette validator

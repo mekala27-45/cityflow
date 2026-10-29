@@ -18,13 +18,13 @@ it or the build fails.
 
 ## Scale
 
-92,634,577 source rows were read from 126 files,
-covering 42 months from July 2021 to
+1,012,369,990 source rows were read from 144 files,
+covering 48 months from January 2021 to
 December 2024, across 3 services and
-5 schema vintages. 92,208,701 rows landed in the
-warehouse. 425,876 were quarantined, which is
-0.46 percent of what was read. The fact table holds
-92,208,701 rows.
+5 schema vintages. 1,004,405,361 rows landed in the
+warehouse. 7,964,629 were quarantined, which is
+0.79 percent of what was read. The fact table holds
+1,004,405,361 rows.
 
 Nothing was deleted. Every rejected row is written to `quarantine_log` under the
 name of the rule that caught it, the counts are on the dashboard, and the ingest
@@ -41,7 +41,7 @@ rows went does not get to describe itself as clean.
 
 Every row of `source_audit` records the backend that produced it, and the build
 manifest carries the distinct set of names it found there. For the figures in
-this repository right now, that is `synthetic`. It is derived from the
+this repository right now, that is `tlc`. It is derived from the
 audit table rather than from the config file, so a warehouse assembled from more
 than one backend would say so here instead of presenting a blend as though it
 came from one place.
@@ -125,7 +125,7 @@ ranking by id produces a choropleth that is a gradient from Alphabet City to
 Yorkville, an artefact that looks exactly like a finding), and a list of parks,
 cemeteries and islands is held down by a multiplier. The volumes are generated.
 The ordering is a person's opinion about the city. On this build the busiest
-pickup zone is East Williamsburg, and 23 zones
+pickup zone is JFK Airport, and 50 zones
 account for half of all trips with a resolved pickup: both of those are
 properties of that opinion crossed with a Zipf fall off, not of New York.
 
@@ -240,19 +240,22 @@ a caught row actually looks like rather than only how many there were.
 
 | rule | rows caught | share of source |
 | --- | --- | --- |
-| `non_positive_distance` | 286,664 | 0.3095 percent |
-| `non_positive_fare` | 50,819 | 0.0549 percent |
-| `implausible_speed` | 38,930 | 0.0420 percent |
-| `passenger_count_invalid` | 27,263 | 0.0294 percent |
-| `timestamp_out_of_period` | 10,957 | 0.0118 percent |
-| `dropoff_before_pickup` | 7,390 | 0.0080 percent |
-| `exact_duplicate` | 3,557 | 0.0038 percent |
-| `duration_too_long` | 294 | 0.0003 percent |
-| `distance_too_long` | 2 | 0.0000 percent |
+| `passenger_count_invalid` | 2,367,465 | 0.2339 percent |
+| `non_positive_distance` | 2,250,758 | 0.2223 percent |
+| `non_positive_fare` | 2,188,663 | 0.2162 percent |
+| `duration_too_short` | 734,191 | 0.0725 percent |
+| `dropoff_before_pickup` | 159,956 | 0.0158 percent |
+| `duration_too_long` | 156,521 | 0.0155 percent |
+| `implausible_speed` | 83,498 | 0.0082 percent |
+| `distance_too_long` | 14,288 | 0.0014 percent |
+| `exact_duplicate` | 7,204 | 0.0007 percent |
+| `timestamp_out_of_period` | 1,981 | 0.0002 percent |
+| `fare_too_large` | 82 | 0.0000 percent |
+| `negative_component` | 22 | 0.0000 percent |
 
 **Read the share column carefully, because its denominator is a trap.** These
 shares are taken against every source row in the window, which is what makes the
-column sum to the headline 0.4597 percent exactly. That
+column sum to the headline 0.7867 percent exactly. That
 is the right denominator for "how much of this build did this rule remove". It
 is the wrong denominator for "how often does this rule fire", and the difference
 is not small. `passenger_count_invalid` cannot fire on a for hire vehicle file
@@ -265,7 +268,7 @@ reads a column that only some vintages carry. If you want a per population rate,
 health panel cuts it that way.
 
 Of the twelve defined rules plus the duplicate check,
-9 fired over this window. The ones that never fired
+12 fired over this window. The ones that never fired
 are `null_timestamp`,
 `duration_too_short`, `fare_too_large` and `negative_component`, and that is a
 statement about the fixture rather than about the rules. The generator injects
@@ -292,12 +295,12 @@ means no tip passed through the meter, because the tip, if there was one, was
 cash handed to the driver. The zero is a missing value wearing a number, and it
 is indistinguishable from a real zero once it is inside an average.
 
-On this build, 3,402,805 trips were settled in cash, which is
-26.7 percent of yellow and green trips. If you
+On this build, 25,920,891 trips were settled in cash, which is
+17.7 percent of yellow and green trips. If you
 average `tip_amount / fare_amount` over all of them, you get
-14.15 percent. If you average it only over the trips whose
-payment channel actually records a tip, you get 20.35
-percent. The correct figure is 43.9 percent
+20.26 percent. If you average it only over the trips whose
+payment channel actually records a tip, you get 25.93
+percent. The correct figure is 28.0 percent
 higher than the naive one. That is the gap between a number that looks fine and
 a number that is right, and it is roughly the gap between most published New
 York tip rates and the truth.
@@ -313,7 +316,7 @@ time is how six different tip rates get published. In `fct_trip`, `tip_pct` is
 case when tip_is_observable then tip_amount / nullif(fare_amount, 0) end
 ```
 
-with no `else`. 3,887,107 rows carry a null `tip_pct` for that
+with no `else`. 35,027,630 rows carry a null `tip_pct` for that
 reason. A null is not a defect in this column; it is the correct answer to a
 question the data cannot answer.
 
@@ -345,8 +348,8 @@ labelled Unknown and 265 is Outside of NYC. They are not a data quality problem
 to be cleaned away. They are the single most common way a New York taxi analysis
 goes quietly wrong.
 
-On this build they carry 1,574,148 trips, which is
-1.71 percent of the fact table. Those trips are real.
+On this build they carry 36,477,941 trips, which is
+3.63 percent of the fact table. Those trips are real.
 They have real timestamps, real distances and real fares. They contribute to
 every revenue total and every trip count. What they do not have is a polygon,
 and so they join to nothing.
@@ -385,15 +388,15 @@ The official TLC taxi zone shapefile does not contain one polygon per zone id,
 and assuming it does breaks a warehouse in a way that does not error.
 
 It holds 263 polygon records covering
-260 distinct zone ids. 2 zones are
+263 distinct zone ids. 0 zones are
 split across several records, accounting for
-5 of those records between them: Corona is two
+0 of those records between them: Corona is two
 polygons, and the three harbour islands are three.
-3 ids that the trip records can and do reference
+0 ids that the trip records can and do reference
 have no polygon at all, because the mapping folded them into their neighbours:
 57, 104 and 105. Add the two unknown codes and `dim_zone` holds
 265 rows, which is every id the TLC publishes, while
-`zones.geojson` carries 260 features, one per id that has a
+`zones.geojson` carries 263 features, one per id that has a
 shape to draw.
 
 **What went wrong before it was fixed.** The zone reference was published one row
@@ -448,7 +451,7 @@ in a slide. NULL says "not collected", which is what happened.
 window starts where it does. `mart_null_rates` watches it per service and per
 source period, and reports 54 service months in
 which the column is entirely null. The first period in which it carries a value
-is January 2022, which is the month the column appears
+is April 2021, which is the month the column appears
 in the published files. That step is visible on the null rate panel as a step,
 not averaged away, because the mart counts per period rather than over the
 window.
@@ -457,7 +460,7 @@ The last service month in which `airport_fee` is entirely null is
 December 2024, which is the last month of the window,
 and that is not a contradiction. Green never receives the column at all: there
 is no `green_v*_airport_fee` vintage, so every green month from
-July 2021 to December 2024 is legitimately all null. A
+January 2021 to December 2024 is legitimately all null. A
 null rate panel that only showed the earliest all null month would make this
 look like a historical boundary. It is a per service property of the schema, and
 the mart is cut per service so that it reads as one.
@@ -468,7 +471,7 @@ boundaries, all of which precede this window, so it is entirely null in
 0 service months, which is none of them.
 `cbd_congestion_fee`
 arrives at the `*_cbd` boundaries, which follow this window, so it is entirely
-null in all 126 service months here, which is every
+null in all 144 service months here, which is every
 service month there is. Those two are the control cases: a column that is never
 null and a column that is always null, either side of one that changes. The
 build window in `config/cityflow.yml` is chosen to span the introduction in the
@@ -506,4 +509,4 @@ hole and reads as a smooth decline. Flagging the gap lets the panel break the
 line instead of drawing through it. It also keeps the byte count and the elapsed
 seconds per ingest, so the panel can say whether a month is small because the
 source was small or because the read was cut short. This build spent
-217 seconds in ingest across every month.
+1,374 seconds in ingest across every month.

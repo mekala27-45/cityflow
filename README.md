@@ -1,7 +1,7 @@
 # cityflow
 
 An analytics warehouse and a browser side dashboard over New York City taxi and
-for hire vehicle trip records. 92,208,701 trips are modelled into a
+for hire vehicle trip records. 1,004,405,361 trips are modelled into a
 tested star schema with dbt, every published metric is defined once in a version
 controlled metric layer, and a conformed mart layer is queried live in the
 browser by DuckDB-WASM over HTTP range requests.
@@ -16,7 +16,7 @@ No key, no server, no setup. The demo is a static page.
 ![The hour of week grid and the flow map, both answering live queries](docs/demo.gif)
 
 Every frame above is a query. The grid is
-124,446 published rows read by HTTP range
+131,115 published rows read by HTTP range
 request, and each filter click runs SQL in the browser against parquet it never
 downloads whole.
 
@@ -29,17 +29,17 @@ Most published New York taxi tip rates are wrong, and the reason is one column.
 Cash trips record a tip of zero. That is a missing value, not a zero: no tip
 passed through the meter, so the meter has nothing to record. Averaging tip over
 fare across all payment types therefore divides the tips that were observed by a
-population that includes 3,402,805 trips that could not have been.
+population that includes 25,920,891 trips that could not have been.
 
 Over the yellow and green trips in this warehouse:
 
 | | tip as a share of fare |
 | --- | --- |
-| Averaged over every payment type | 14.15 percent |
-| Card payments only, where a tip is observable | 20.35 percent |
+| Averaged over every payment type | 20.26 percent |
+| Card payments only, where a tip is observable | 25.93 percent |
 
 The naive figure understates the real one by
-43.9 percent of itself. `tip_pct` is modelled
+28.0 percent of itself. `tip_pct` is modelled
 as NULL wherever the payment channel cannot record a tip, never as zero, and
 three dbt tests hold that line. For hire vehicle trips are settled in the app,
 so their zeroes are real zeroes and they are included. The reasoning is in
@@ -63,7 +63,7 @@ the warehouse.
   durations, exact duplicates, and surcharge columns null before the month they
   were introduced.
 
-Every figure in this repository was measured on the `synthetic` backend.
+Every figure in this repository was measured on the `tlc` backend.
 The generator exists because this repository was built on a machine whose egress
 policy denies the TLC distribution host, because continuous integration cannot
 download eight gigabytes on every push, and because every quarantine rule needs
@@ -89,20 +89,20 @@ Nothing here is typed by hand.
   TLC trip record parquet, yellow + green + for hire, or the seeded generator
         |  ingest        per vintage schema mapping, quarantine, one month at a time
         v
-  warehouse.duckdb  (local, gitignored, 92,208,701.0 rows at trip grain)
+  warehouse.duckdb  (local, gitignored, 1,004,405,361.0 rows at trip grain)
         |  dbt staging   typing, derivation, the quarantine marts
         |  dbt marts     star schema, fct_trip incremental by month
         v
   +--------------------------------------------------------------+
-  |  fct_trip                 the grain, 92,208,701 rows |
+  |  fct_trip                 the grain, 1,004,405,361 rows |
   |  dim_zone  dim_date  dim_hour  dim_service  dim_ratecode      |
   +---------------------------+----------------------------------+
                               |  publish
                               v
   +--------------------------------------------------------------+
   |  SHIPPED LAYER, what the browser can reach                    |
-  |  23 files, 67.4 MB total,    |
-  |  largest 31.8 MB                        |
+  |  23 files, 150.2 MB total,    |
+  |  largest 55.2 MB                        |
   |  additive components only, never a rate                       |
   +---------------------------+----------------------------------+
                               |  HTTP range requests
@@ -113,9 +113,9 @@ Nothing here is typed by hand.
   +--------------------------------------------------------------+
 ```
 
-92,208,701 rows at trip grain are summarized into
-67.4 MB that the browser queries, which is
-1,368,518 source rows for every megabyte shipped. The detail lives in
+1,004,405,361 rows at trip grain are summarized into
+150.2 MB that the browser queries, which is
+6,688,925 source rows for every megabyte shipped. The detail lives in
 the warehouse and the browser queries conformed aggregates. That is not a
 workaround for a static host, it is how BI works, and
 [ARCHITECTURE.md](ARCHITECTURE.md) says why at length because it is the question
@@ -143,33 +143,33 @@ warehouse is a document about the code rather than a constraint on it. A second
 gate scans the dashboard source and fails if it computes a metric the layer
 already defines.
 
-**The quarantine.** 425,876 rows,
-0.4597 percent of source, caught by
-9 named rules. Nothing is deleted. Every rejected
+**The quarantine.** 7,964,629 rows,
+0.7867 percent of source, caught by
+12 named rules. Nothing is deleted. Every rejected
 row is logged with the rule that caught it, the counts are on the dashboard, and
 the identity `source rows = clean rows + sum(quarantine counts)` is asserted
 after every month. A pipeline that cannot say where its rejected rows went does
 not get to call itself clean.
 
 **Unknown zones.** Zone ids 264 and 265 mean the TLC could not determine the
-location. They carry 1,574,148 trips,
-1.71 percent of the total. They are kept, flagged,
+location. They carry 36,477,941 trips,
+3.63 percent of the total. They are kept, flagged,
 and excluded from geographic aggregates only, with the exclusion and its share
 stated on the map. Dropping them is the easy version and it biases every total.
 
 **The statistics.** Wilson intervals on every proportion, not the normal
 approximation. STL with gap detection. PELT changepoints written out rather than
-imported. And 757 zone comparisons corrected with
-Benjamini-Hochberg: 25 of them look
+imported. And 738 zone comparisons corrected with
+Benjamini-Hochberg: 706 of them look
 significant at an uncorrected five percent threshold, which is what you would
-expect from 38 by chance alone, and
-0 survive the correction. The panel states the
+expect from 37 by chance alone, and
+705 survive the correction. The panel states the
 comparison count on screen.
 
 **The schema change.** The window spans the month the airport fee column appears
 in the published files. `mart_null_rates` shows
 54 service months where the column is entirely
-null, then January 2022, where it starts carrying
+null, then April 2021, where it starts carrying
 values. A column that does not exist yet is modelled as NULL and never as zero,
 so the series shows a gap rather than a step up from nothing.
 

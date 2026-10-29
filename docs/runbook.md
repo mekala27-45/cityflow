@@ -4,10 +4,10 @@ How to build this from nothing, what every target is for, and what to do when it
 breaks. Measured figures are placeholders rendered from
 `web/public/data/manifest.json`; commands and paths are literal.
 
-The build in this repository right now used the `synthetic` backend,
-over the window July 2021 to December 2024, with
-June 2024 published at trip grain: 126
-source files, 42 months, 3 services.
+The build in this repository right now used the `tlc` backend,
+over the window January 2021 to December 2024, with
+June 2024 published at trip grain: 144
+source files, 48 months, 3 services.
 
 ## Before anything
 
@@ -71,7 +71,7 @@ the repository, in the one module where a silent fan out had already shipped.
 `scripts/build_zone_fixture.py` writes a shapefile with the same structure and
 the same defects, built from the committed zone reference so the two cannot
 drift: the same 263 polygon records over the same
-260 zone ids, the same 2
+263 zone ids, the same 0
 zones split across several records, and the same ids with no polygon at all. It
 is the same tactic as the trip generator, applied to geometry.
 
@@ -242,7 +242,7 @@ into a crash.
 
 **What to do.** Set `duckdb_memory_limit` in `config/cityflow.yml` below
 physical memory, leaving room for the rest of the machine. This build ran at
-`3GB`. Then set the same value in `transform/profiles.yml`,
+`10GB`. Then set the same value in `transform/profiles.yml`,
 because the Python side and dbt each open their own connection and there are
 genuinely two places. Check that
 `warehouse/tmp` is on a filesystem with room to spill into; that path is set in
@@ -274,11 +274,11 @@ failed rather than a single file, treat it as the signal it is: a shipped layer
 that keeps growing means the aggregate grain has drifted towards the fact table,
 and the fix is upstream of the file.
 
-This build ships 67.38 MB across 23 files
+This build ships 150.16 MB across 23 files
 against a 400 MB total budget, largest file
-31.77 MB against a 95 MB per file
+55.20 MB against a 95 MB per file
 budget. The file to watch as the window grows is `agg_od_flow.parquet`, now
-31.77 MB, because an origin to destination matrix is
+55.20 MB, because an origin to destination matrix is
 quadratic in zones.
 
 ### The claim gate disagrees
@@ -454,7 +454,7 @@ the Thrift parser that is trying to parse a page header out of them.
 `src/lib/duckdb-client.ts` now asks each file for its first four bytes before
 registering it and checks them against the parquet magic. A file that answers
 correctly is registered as a URL and read by range, which is the whole point of
-the architecture and what the 67.4 MB layer is designed around. A
+the architecture and what the 150.2 MB layer is designed around. A
 file that does not is fetched whole, which this host does serve correctly, and
 the fallback is reported on the data health panel rather than hidden, because
 every other panel on that page tells the reader it reads by range and on a

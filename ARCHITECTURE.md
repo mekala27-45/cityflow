@@ -13,9 +13,9 @@ current value and no second copy to drift.
 
 ## The question
 
-The warehouse holds 92,208,701 trip rows. The dashboard queries
-67.38 MB of parquet spread over 23 files, the
-largest of which is 31.77 MB. DuckDB-WASM can read parquet
+The warehouse holds 1,004,405,361 trip rows. The dashboard queries
+150.16 MB of parquet spread over 23 files, the
+largest of which is 55.20 MB. DuckDB-WASM can read parquet
 over HTTP range requests, and the fact table is parquet. So why is there a layer
 in between?
 
@@ -46,9 +46,9 @@ five definitions of a trip count, and the quarter in which two dashboards
 disagree about revenue starts the day the second extract ships.
 
 So the workhorse is a single file, `agg_zone_hour.parquet`, at zone by hour by
-day type by month by service. It is 929,826 rows and
-25.03 MB, which is the whole of
-92,208,701 trip rows reduced to the grain the interface can actually
+day type by month by service. It is 1,235,387 rows and
+39.25 MB, which is the whole of
+1,004,405,361 trip rows reduced to the grain the interface can actually
 reach. Every KPI tile, the hour of week choropleth, the Pareto, the zone
 ranking and the zone comparison panel read it. They cannot disagree with each
 other, because there is only one set of numbers for them to read. Where a panel
@@ -118,8 +118,8 @@ warehouse, rather than a full window of both.
 
 `config/cityflow.yml` selects `tlc` or `synthetic`, and `CITYFLOW_BACKEND`
 overrides it. Every row of `source_audit` records which one produced it, and the
-manifest carries the set: this build is `synthetic`, across
-126 source files, 42 months, 3
+manifest carries the set: this build is `tlc`, across
+144 source files, 48 months, 3
 services and 5 schema vintages.
 
 The `tlc` backend reads the published parquet over HTTPS with `curl`, to a
@@ -272,19 +272,19 @@ That claim is measured rather than asserted, and it is measured twice. Locally,
 filter, how many row groups could be skipped outright:
 4 of the 12 panel queries carry a
 filter that prunes, and the best of them skips
-87 percent of its file's row groups. Latency there
+88 percent of its file's row groups. Latency there
 is a lower bound with no network and no WebAssembly, and it sits at
-5.88 ms at the median p95, 37.19 ms
+4.72 ms at the median p95, 59.86 ms
 at the worst.
 
 Bytes over the wire cannot be measured locally, because a local read is a file
 read. The Playwright smoke test counts the range requests DuckDB-WASM actually
 issues and the bench script folds that log in. Across the panel queries whose
 browser traffic was captured, DuckDB-WASM pulled
-15.9 percent of the bytes those files contain and
+30.0 percent of the bytes those files contain and
 read no file whole. The sharpest single case is the
-Hour of week grid query, which fetched 448.8
-KB out of a 3.98 MB file. Nothing about that is a
+Hour of week grid query, which fetched 694.8
+KB out of a 5.15 MB file. Nothing about that is a
 property of DuckDB. It is a property of having sorted the file on the column the
 query filters. The full table is in [RESULTS.md](RESULTS.md).
 
@@ -331,19 +331,19 @@ The constraint is visible in the design rather than bolted onto it.
 - The workhorse aggregate is at zone by hour by day type by month, not zone by
   hour by day, because the day grain multiplies the file by thirty for a filter
   the interface does not offer. As built it is
-  25.03 MB.
+  39.25 MB.
 - `agg_hour_of_week` is at borough grain, not zone grain, because the heatmap's
   own filter is borough and the zone grain would multiply that file by forty for
   a chart that never shows a zone. At borough grain it is
-  3.98 MB.
+  5.15 MB.
 - The largest shipped file is `agg_od_flow.parquet` at
-  31.77 MB over
-  2,926,052 rows, because an origin to destination matrix
+  55.20 MB over
+  4,407,534 rows, because an origin to destination matrix
   is quadratic in zones and there is no coarser grain that still answers the
   question the flow map asks. It is the file to watch as the window grows.
 - The trip grain extract covers one month, and yellow and green only. It is
-  303,524 rows and
-  5.93 MB. A month of for hire records does not
+  3,439,819 rows and
+  49.68 MB. A month of for hire records does not
   fit in the per file budget, and splitting it across eight files to get under a
   per file limit would be dodging the budget rather than meeting it. The
   interface says which services the detail covers rather than letting a reader
@@ -354,9 +354,9 @@ The constraint is visible in the design rather than bolted onto it.
   metrics, so the page derives them, and the metric layer enforcement gate is
   scoped to say so explicitly rather than leaving it to be argued about later.
 
-The result is 92,208,701 fact rows summarised into
-67.38 MB across 23 files, which is
-1,368,518 source rows for every megabyte a reader downloads.
+The result is 1,004,405,361 fact rows summarised into
+150.16 MB across 23 files, which is
+6,688,925 source rows for every megabyte a reader downloads.
 The per file breakdown is in [RESULTS.md](RESULTS.md).
 
 ## Where each gate sits
