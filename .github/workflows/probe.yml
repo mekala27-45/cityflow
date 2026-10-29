@@ -19,6 +19,10 @@ on:
         description: "last month, YYYY-MM (empty for the build window)"
         default: ""
         type: string
+      census:
+        description: "one column to read in full and count, such as airport_fee (empty for none)"
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -47,11 +51,13 @@ jobs:
         env:
           START: ${{ inputs.start }}
           END: ${{ inputs.end }}
+          CENSUS: ${{ inputs.census }}
         run: |
           set -uo pipefail
           args=()
           if [ -n "$START" ]; then args+=(--start "$START"); fi
           if [ -n "$END" ]; then args+=(--end "$END"); fi
+          if [ -n "$CENSUS" ]; then args+=(--census "$CENSUS"); fi
           uv run cityflow probe "${args[@]}" --json probe.json 2>&1 | tee probe.log
           status=${PIPESTATUS[0]}
           if [ -f probe.json ]; then

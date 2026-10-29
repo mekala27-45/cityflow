@@ -1,10 +1,11 @@
 """The probe: a real build's schema and size, read from footers before any download.
 
 What is pinned here is the comparison and the reporting, against parquet files
-written locally with the exact column names of each vintage. The one path not
-exercised is the remote read itself, which needs the TLC host; the probe
-workflow runs that path on a runner, and everything it relies on underneath
-(the comparison, the footer reads, the grouping) is the code tested here.
+written locally with the exact column names of each vintage, and the way a
+remote refusal is read: a stand in connection raises the errors DuckDB raises
+for a missing object and for the host's firewall. The remote read itself needs
+the TLC host; the probe workflow runs it on a runner, and everything it relies
+on underneath (the comparison, the footer reads, the grouping) is tested here.
 """
 
 from __future__ import annotations
@@ -24,15 +25,15 @@ from typer.testing import CliRunner
 from cityflow.cli import app
 from cityflow_core.config import SourceSpec
 from cityflow_core.paths import repo_root
-from cityflow_ingest import probe as probe_module
 from cityflow_ingest.probe import (
     FileProbe,
+    census_lines,
     group_notes,
-    head_path,
-    head_url,
     probe_source,
     probe_window,
+    read_footer,
     schema_groups,
+    status_codes,
     write_report,
 )
 from cityflow_ingest.vintage import compare_columns, expected_columns, resolve_vintage
@@ -138,7 +139,9 @@ def test_a_window_of_local_files_is_read_from_the_footer(
     assert first.readable and first.rows == 7 and first.row_groups == 1
     assert first.bytes == (tmp_path / present.filename).stat().st_size
     assert first.vintage == "green_v3_congestion"
-    assert ("lpep_pickup_datetime", "TIMESTAMP") in first.columns
+    # Physical types, from the footer: a timestamp is stored as INT64.
+    assert ("lpep_pickup_datetime", "INT64") in first.columns
+    assert ("fare_amount", "DOUBLE") in first.columns
     assert not second.published and not second.readable
     assert second.error == "no such file"
 
@@ -149,7 +152,7 @@ def test_a_file_that_is_not_parquet_is_reported_not_raised(
     spec = SourceSpec(service="yellow", year=2024, month=1)
     (tmp_path / spec.filename).write_bytes(b"not a parquet file")
 
-    result = probe_source(connection, spec, str(tmp_path / spec.filename), head_path)
+    result = probe_source(connection, spec, str(tmp_path / spec.filename), local=True)
 
     assert result.published and not result.readable
     assert result.error is not None
@@ -160,7 +163,7 @@ def test_a_month_before_the_service_existed_is_reported_not_raised(
 ) -> None:
     spec = SourceSpec(service="green", year=2013, month=1)
 
-    result = probe_source(connection, spec, str(tmp_path / spec.filename), head_path)
+    result = probe_source(connection, spec, str(tmp_path / spec.filename), local=True)
 
     assert result.vintage is None and not result.published
     assert result.error is not None and "No vintage covers green" in result.error
@@ -186,43 +189,137 @@ def test_groups_merge_consecutive_months_and_split_where_the_schema_drifts(
     assert groups[1]["case_only"] == [["airport_fee", "Airport_fee"]]
 
 
-def _completed(stdout: str, code: int = 0) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(["curl"], code, stdout, "")
+class _Refusing:
+    """Stands in for a connection to the TLC host: raises the given errors in
+    turn, then answers from a real connection once they run out."""
+
+    def __init__(self, errors: list[str], real: duckdb.DuckDBPyConnection) -> None:
+        self.errors = list(errors)
+        self.real = real
+        self.calls = 0
+
+    def execute(self, sql: str) -> duckdb.DuckDBPyConnection:
+        self.calls += 1
+        if self.errors:
+            raise duckdb.IOException(self.errors.pop(0))
+        return self.real.execute(sql)
 
 
-def test_head_reads_the_final_response_after_a_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
-    headers = (
-        "HTTP/1.1 301 Moved Permanently\r\nContent-Length: 0\r\nLocation: elsewhere\r\n\r\n"
-        "HTTP/2 200\r\ncontent-length: 48123456\r\ncontent-type: binary/octet-stream\r\n\r\n"
-    )
-    monkeypatch.setattr(probe_module.shutil, "which", lambda name: "/usr/bin/curl")
-    monkeypatch.setattr(probe_module.subprocess, "run", lambda *a, **k: _completed(headers))
-
-    answer = head_url("https://example.invalid/yellow_tripdata_2024-01.parquet")
-
-    assert answer.published and answer.bytes == 48_123_456
+FIREWALL = (
+    'HTTP Error: Full download failed to to URL "https://d37ci6vzurychx.cloudfront.net/'
+    'trip-data/yellow_tripdata_2025-06.parquet": 202 (Accepted)'
+)
+GONE = "HTTP Error: HTTP GET error on 'https://example.invalid/x.parquet' (HTTP 403)"
 
 
-def test_head_treats_a_refusal_as_not_published(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(probe_module.shutil, "which", lambda name: "/usr/bin/curl")
-    monkeypatch.setattr(
-        probe_module.subprocess, "run", lambda *a, **k: _completed("HTTP/1.1 403 Forbidden\r\n\r\n")
-    )
-
-    answer = head_url("https://example.invalid/fhvhv_tripdata_2031-01.parquet")
-
-    assert not answer.published and answer.detail == "HTTP 403"
-
-
-def test_head_reports_a_transfer_failure_and_a_missing_curl(
-    monkeypatch: pytest.MonkeyPatch,
+def test_a_firewall_challenge_is_retried_after_a_pause_that_doubles(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(probe_module.shutil, "which", lambda name: None)
-    assert head_url("https://example.invalid/x.parquet").detail == "curl is not on PATH"
+    spec = SourceSpec(service="green", year=2024, month=1)
+    path = tmp_path / spec.filename
+    write_file(connection, path, vintage_columns(spec), rows=4)
+    stand_in = _Refusing([FIREWALL, FIREWALL], connection)
+    pauses: list[float] = []
 
-    monkeypatch.setattr(probe_module.shutil, "which", lambda name: "/usr/bin/curl")
-    monkeypatch.setattr(probe_module.subprocess, "run", lambda *a, **k: _completed("", 6))
-    assert head_url("https://example.invalid/x.parquet").detail.startswith("curl exit 6")
+    rows, attempts = read_footer(stand_in, str(path), pause=10.0, sleep=pauses.append)  # type: ignore[arg-type]
+
+    assert attempts == 3 and pauses == [10.0, 20.0]
+    assert rows, "the footer was read once the refusals ran out"
+
+
+def test_a_firewall_that_never_relents_is_an_error_not_a_missing_month(
+    connection: duckdb.DuckDBPyConnection,
+) -> None:
+    spec = SourceSpec(service="yellow", year=2025, month=6)
+    stand_in = _Refusing([FIREWALL] * 5, connection)
+
+    result = probe_source(
+        stand_in,  # type: ignore[arg-type]
+        spec,
+        spec.url,
+        local=False,
+        retries=2,
+        sleep=lambda seconds: None,
+    )
+
+    assert result.published and not result.readable
+    assert result.error is not None and "202 (Accepted)" in result.error
+    assert stand_in.calls == 3
+
+
+def test_a_missing_object_is_unpublished_at_once(connection: duckdb.DuckDBPyConnection) -> None:
+    spec = SourceSpec(service="fhvhv", year=2031, month=1)
+    stand_in = _Refusing([GONE], connection)
+
+    result = probe_source(stand_in, spec, spec.url, local=False, sleep=pytest.fail)  # type: ignore[arg-type]
+
+    assert not result.published
+    assert result.error is not None and "403" in result.error
+    assert stand_in.calls == 1
+
+
+def test_a_census_reads_one_column_and_counts_what_it_holds(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    """The question a footer cannot answer: does a column the vintage table
+    dates later already carry a fee, or only zeros?"""
+    spec = SourceSpec(service="yellow", year=2021, month=12)
+    path = tmp_path / spec.filename
+    columns = sorted(vintage_columns(spec))
+    select = ", ".join(f'cast(i as double) as "{name}"' for name in columns)
+    connection.execute(
+        f"copy (select {select}, case when i % 4 = 0 then 1.25 when i % 4 = 1 then 0.0 end "
+        f"as Airport_fee from range(8) t(i)) to '{path}' (format parquet)"
+    )
+
+    result = probe_source(connection, spec, str(path), local=True, census="airport_fee")
+
+    assert result.census is not None
+    assert result.census.column == "Airport_fee"
+    assert (result.census.non_null, result.census.non_zero) == (4, 2)
+    assert (result.census.minimum, result.census.maximum) == (0.0, 1.25)
+    assert census_lines([result]) == [
+        "yellow:2021-12 Airport_fee: 4 of 8 rows carry a value, 2 non zero, 0 to 1.25"
+    ]
+    assert result.ranges == (("Airport_fee", 0.0, 1.25),)
+
+
+def test_a_census_of_a_column_the_file_lacks_is_skipped(
+    connection: duckdb.DuckDBPyConnection, tmp_path: Path
+) -> None:
+    spec = SourceSpec(service="green", year=2024, month=1)
+    write_file(connection, tmp_path / spec.filename, vintage_columns(spec))
+
+    result = probe_source(
+        connection, spec, str(tmp_path / spec.filename), local=True, census="airport_fee"
+    )
+
+    assert result.census is None
+    assert census_lines([result]) == []
+
+
+def test_remote_files_are_spaced_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Three files, two pauses, and every one read from its URL."""
+    seen: list[str] = []
+    pauses: list[float] = []
+
+    def fake_probe(connection: object, spec: SourceSpec, location: str, **kwargs: object) -> str:
+        seen.append(location)
+        return location
+
+    import cityflow_ingest.probe as probe_module
+
+    monkeypatch.setattr(probe_module, "probe_source", fake_probe)
+    specs = [SourceSpec(service="green", year=2024, month=m) for m in (1, 2, 3)]
+
+    class Quiet:
+        def execute(self, sql: str) -> None:
+            return None
+
+    probe_window(Quiet(), specs, spacing=0.5, sleep=pauses.append)  # type: ignore[arg-type]
+
+    assert seen == [spec.url for spec in specs]
+    assert pauses == [0.5, 0.5]
 
 
 @pytest.fixture
@@ -367,7 +464,7 @@ def test_an_unexpected_column_that_carries_values_says_how_many_rows(
     groups = schema_groups(probe_window(connection, months, local_dir=tmp_path))
 
     assert groups[0]["unexpected_values"] == {"airport_fee": 5}
-    assert group_notes(groups[0]) == ["unexpected airport_fee (values in 5 rows)"]
+    assert group_notes(groups[0]) == ["unexpected airport_fee (values in 5 rows, 0 to 4)"]
 
 
 def test_a_month_without_null_counts_makes_the_total_unknown() -> None:
@@ -398,3 +495,15 @@ def test_a_long_annotation_is_split_and_numbered_not_cut() -> None:
     assert commands[0].startswith(f"::notice title=sizes (1 of {len(commands)})::")
     carried = "%0A".join(command.split("::", 2)[2] for command in commands)
     assert carried.count("fhvhv:2023-") == len(lines)
+
+
+def test_a_status_is_read_where_duckdb_writes_one_and_never_from_a_file_name() -> None:
+    assert status_codes(FIREWALL) == {202}
+    assert status_codes(GONE) == {403}
+    dropped = (
+        "HTTP Error: HTTP GET error on 'https://d37ci6vzurychx.cloudfront.net/trip-data/"
+        "fhvhv_tripdata_2025-08.parquet' (HTTP 0 Internal Server Error)"
+    )
+    assert status_codes(dropped) == {0}
+    local = "Invalid Input Error: File '/tmp/pytest-202/yellow_tripdata_2024-01.parquet' too small"
+    assert status_codes(local) == set()

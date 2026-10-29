@@ -90,8 +90,16 @@ def render(document: dict[str, Any]) -> list[str]:
         f"{f['source']}: {f['error'] or 'not published'}" for f in files if not f["published"]
     ]
 
+    censused = [
+        f"{f['source']} {f['census']['column']}: {f['census']['non_null']:,} of "
+        f"{f['rows'] or 0:,} rows carry a value, {f['census']['non_zero']:,} non zero, "
+        f"{f['census']['minimum']} to {f['census']['maximum']}"
+        for f in files
+        if f.get("census")
+    ]
     out = [
         *annotations("notice", "probe summary", summary),
+        *(annotations("notice", "census", censused) if censused else []),
         *annotations("notice", "schemas", schemas or ["no published file"]),
         *annotations("notice", "sizes", sizes or ["no published file"]),
     ]

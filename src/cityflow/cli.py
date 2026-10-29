@@ -195,17 +195,28 @@ def probe(
     json_out: Annotated[
         Path | None, typer.Option("--json", help="Write every file's probe to this path.")
     ] = None,
+    census: Annotated[
+        str | None,
+        typer.Option(help="Also read this one column in full and count what it holds."),
+    ] = None,
 ) -> None:
     """Read every published file's schema, rows and size, without downloading one.
 
     The window defaults to the build's own and can be widened, since the probe
     changes nothing. The exit code is 1 when a file inside the build window is
     unpublished, unreadable or missing a column its vintage expects, which is
-    exactly when a real ingest of that window would stop partway.
+    exactly when a real ingest of that window would stop partway. --census is
+    the one option that reads data, a single column of each file that has it.
     """
     import duckdb
 
-    from cityflow_ingest.probe import group_notes, probe_window, schema_groups, write_report
+    from cityflow_ingest.probe import (
+        census_lines,
+        group_notes,
+        probe_window,
+        schema_groups,
+        write_report,
+    )
 
     config = load_config()
     first = _month(start, config.start)
@@ -216,7 +227,7 @@ def probe(
 
     connection = duckdb.connect()
     try:
-        probes = probe_window(connection, window.sources(), local_dir=local_dir)
+        probes = probe_window(connection, window.sources(), local_dir=local_dir, census=census)
     finally:
         connection.close()
 
@@ -235,6 +246,8 @@ def probe(
         )
     console.print(table)
 
+    for line in census_lines(probes):
+        console.print(f"  census {line}")
     unpublished = [p for p in probes if not p.published]
     for item in unpublished:
         console.print(f"  [yellow]not published[/yellow] {item.source}: {item.error}")
