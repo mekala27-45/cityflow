@@ -143,8 +143,9 @@ on the others not firing.
 
 The second is continuous integration. CI cannot download
 {{ f1:source_gb }} GB of parquet on every push, and a pipeline whose tests only
-run against data CI cannot fetch is a pipeline with no tests. The `pipeline` job in `ci.yml` runs
-the entire build end to end at `--scale 0.002`, into a scratch tree, and then
+run against data CI cannot fetch is a pipeline with no tests. The `pipeline`
+job in `ci.yml` runs the entire build end to end at `--scale 0.002`, into a
+scratch tree, and then
 asserts with `git diff --exit-code` that the scratch tree did not leak back into
 the repository. That last step matters: a build that rewrote the committed
 shipped layer would make the published figures gate pass against numbers it had
