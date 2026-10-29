@@ -346,20 +346,23 @@ wants to know how much of the city is missing from the map is told, on the map.
 
 ## The shapefile
 
-The official TLC taxi zone shapefile does not contain one polygon per zone id,
-and assuming it does breaks a warehouse in a way that does not error.
+A zone shapefile need not contain one polygon per zone id, and assuming it does
+breaks a warehouse in a way that does not error.
 
-It holds {{ n:shapefile_polygon_records }} polygon records covering
-{{ n:zones_with_geometry }} distinct zone ids. {{ n:zones_dissolved }} zones are
-split across several records, accounting for
-{{ n:zones_multi_part_polygons }} of those records between them: Corona is two
-polygons, and the three harbour islands are three.
-{{ n:zones_without_geometry }} ids that the trip records can and do reference
-have no polygon at all, because the mapping folded them into their neighbours:
-57, 104 and 105. Add the two unknown codes and `dim_zone` holds
+The copy the published build fetched holds {{ n:shapefile_polygon_records }}
+polygon records covering {{ n:zones_with_geometry }} distinct zone ids;
+{{ n:zones_dissolved }} zones are split across several records, and
+{{ n:zones_without_geometry }} ids that the trip records can reference have no
+polygon. Add the two unknown codes and `dim_zone` holds
 {{ n:distinct_zones }} rows, which is every id the TLC publishes, while
 `zones.geojson` carries {{ n:geojson_features }} features, one per id that has a
 shape to draw.
+
+The older copy the first builds read did not have one polygon per id. Two of
+its polygons carried Corona's id 56 and three carried the harbour islands' 103,
+while 57, 104 and 105, which name the same places, had none.
+`tests/fixtures/zone_reference_older_copy.csv` records that layout, and the
+tests of the dissolve and of the zones with no polygon are built from it.
 
 **What went wrong before it was fixed.** The zone reference was published one row
 per shapefile record. The two multi part zones therefore appeared two and three
@@ -370,23 +373,34 @@ errored. Nothing looked wrong. Every total was simply slightly too high, in a
 direction and a magnitude that no eyeball would catch, and only a row count
 comparison would ever have said so.
 
-**How it was fixed.** `prepare_zones` gathers every polygon record under its zone
-id first, dissolves the parts with `unary_union`, and emits one row per zone. The
-three geometryless ids are emitted explicitly from `GEOMETRYLESS_ZONE_IDS`,
-carrying their real name and borough with `has_geometry` false. That distinction
-matters and `dim_zone.sql` spells it out: a zone with no geometry is a real place
-whose trips have a known location that simply cannot be drawn, while an unknown
-code is a trip whose location was never resolved. Counting the first as the
-second would overstate the unresolved share.
+**How it was fixed.** `prepare_zones` gathers every polygon record under its
+zone id first, dissolves the parts with `unary_union`, and emits one row per
+zone. An id in `GEOMETRYLESS_ZONE_IDS` that the file has no polygon for is
+emitted explicitly, carrying its real name and borough with `has_geometry`
+false. That distinction matters and `dim_zone.sql` spells it out: a zone with no
+geometry is a real place whose trips have a known location that simply cannot be
+drawn, while an unknown code is a trip whose location was never resolved.
+Counting the first as the second would overstate the unresolved share.
 
 Three guards keep it fixed. `assert_fct_trip_zone_join_does_not_fan` rebuilds the
 zone join on its own and asserts it does not change the row count, deliberately
 rebuilt rather than read off `fct_trip` so a failure points at the dimension and
-not at the incremental predicate. `assert_dim_zone_counts` asserts the two counts
-as written out literals, so that a change in the geometry step which drops or
-splits a zone is a deliberate edit with a reason in a commit message rather than
-a map with a hole in it that nobody can date. And `part_count` is carried into
-`dim_zone`, so a zone that gains a part is visible rather than inferred.
+not at the incremental predicate. `assert_dim_zone_counts` asserts that
+`dim_zone` holds every id from 1 to 265 once and that no zone outside a written
+out list, 57, 104 and 105 and the two unknown codes, lacks a polygon, so that a
+change in the geometry step which drops or splits a zone is a deliberate edit
+with a reason in a commit message rather than a map with a hole in it that
+nobody can date. And `part_count` is carried into `dim_zone`, so a zone that
+gains a part is visible rather than inferred.
+
+**The seed is the reference.** `cityflow zones` writes the reference twice: to
+`data/reference/dim_zone.csv`, which the fixture builder and the generator
+read, and to the dbt seed `transform/seeds/zone_lookup.csv`, which the
+warehouse's `dim_zone` is built from. The seed used to be a separate committed
+copy, so the first full build over the published files drew the current
+shapefile's polygons over a dimension that still described the older copy.
+Review caught it before merge, and the refresh pull request now carries both
+files.
 
 Three more decisions in that step are worth knowing. The simplification runs in
 the source projection, EPSG:2263, in US survey feet, before reprojection to

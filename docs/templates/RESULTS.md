@@ -98,19 +98,23 @@ being introduced, not a data quality problem, and the panel says so.
 
 ## 5. The geometry
 
-The official TLC shapefile holds {{ n:shapefile_polygon_records }} polygon
-records covering {{ n:zones_with_geometry }} distinct zone ids.
-{{ n:zones_dissolved }} zones are split across several records and are dissolved
-by zone id. {{ n:zones_without_geometry }} zone ids that the trip records
-reference have no polygon at all, because the mapping folded them into their
-neighbours; they are carried with `has_geometry` false rather than dropped.
-`dim_zone` therefore holds exactly {{ n:distinct_zones }} rows, one per zone id
-from 1 to 265, and `zones.geojson` holds {{ n:geojson_features }} features.
+The TLC zone shapefile, as the published build fetched it, holds
+{{ n:shapefile_polygon_records }} polygon records covering
+{{ n:zones_with_geometry }} distinct zone ids, so {{ n:zones_dissolved }} zones
+needed dissolving and {{ n:zones_without_geometry }} ids the trip records can
+name have no polygon. `dim_zone` holds exactly {{ n:distinct_zones }} rows, one
+per zone id from 1 to 265, the two unknown codes among them, and
+`zones.geojson` holds {{ n:geojson_features }} features.
 
-This was found by a fact table that came out heavier than its own staging
-model. The size of that difference is described rather than quoted, because it
-was measured on a build at a scale this repository no longer runs at, and a
-figure this document cannot re-derive is a figure it does not state.
+The older copy the first builds read was not so tidy. It repeated Corona's id
+and the harbour islands' id across several records and had no polygon for
+three ids the trip records use, which was found by a fact table that came out
+heavier than its own staging model. The size of that difference is described
+rather than quoted, because it was measured on a build this repository no
+longer runs, and a figure this document cannot re-derive is a figure it does
+not state. The dissolve and the rows for zones with no polygon stay, and the
+tests run them against a fixture of that older layout, so they hold whichever
+copy the next build meets.
 
 A duplicate zone id fans out any join on it and inflates every count
 downstream; an absent one vanishes from an inner join. Both failures are
